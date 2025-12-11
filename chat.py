@@ -1,9 +1,71 @@
 import os
+import logging
+from groq import Groq
+from openai import OpenAI
+import re
+
+class TestGenerator:
+    def __init__(self, api_key="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"):
+        self.client = Groq(
+            api_key=api_key,
+        )
+
+    def get_test_code(self, source_code):
+        prompt = self.create_prompt(source_code)
+        chat_completion = self.client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You are a code generator. Output only code."
+                    },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            model="openai/gpt-oss-120b",
+        )
+
+        code = chat_completion.choices[0].message.content
+        cleaned_code = self.clean_llm_response(code)
+        return cleaned_code
+
+    def create_prompt(self, source_code):
+        return f"""
+        You are an automated QA Agent. Your job is to write a Pytest unit test for the provided Python code.
+        
+        STRICT RULES:
+        1. Output ONLY the raw Python code. 
+        2. Do NOT use Markdown backticks (```).
+        3. Do NOT add explanations or conversational text.
+        4. Must include 'import pytest'.
+        5. Mock external dependencies if necessary.
+        
+        INPUT CODE:
+        {source_code}
+        """
+
+    def clean_llm_response(self, raw_text):
+        """
+        Removes markdown backticks, conversational filler, and extracts just the Python code.
+        """
+        # Pattern to find code inside ```python ... ``` blocks
+        pattern = r"```python(.*?)```"
+        match = re.search(pattern, raw_text, re.DOTALL)
+        
+        if match:
+            # Return the content inside the backticks
+            return match.group(1).strip()
+        
+        # Fallback: If no backticks, it might be raw code already.
+        # Just strip whitespace and return.
+        return raw_text.strip()
+
+def main():
+    # Example source code to generate tests for
+    source_code = """
 import time
 import logging
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-from chat import TestGenerator
 
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
@@ -26,30 +88,11 @@ def CheckPath(file: str) -> bool:
     return True
 
 # Reading File
-def make_tests(content):
-    print("------------Generating tests...--------------")
-    try:
-        generator = TestGenerator()
-        code = generator.get_test_code(content)
-        print(code)
-    except Exception as e:
-        print("Error generating tests:", e)
-    finally:
-        print("------------Test generation completed--------------")
-
 def ReadFile(file_path: str) -> str:
     with open(file_path, 'r') as file:
         content = file.read()
     return content
 
-def WriteTest(file_path: str, test_code: str) -> None:
-    folder_path = "/".join(file_path.replace("\\", "/").split("/")[:-1])
-    if os.path.exists(folder_path) == False:
-        os.makedirs(folder_path)
-        
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
-    with open(test_file_path, 'w') as test_file:
-        test_file.write(test_code)
 def main():
     # Logging Configuration
     # Define custom logging format with colors
@@ -92,19 +135,18 @@ def main():
             file = getFileNameFromPath(event.src_path)
             if CheckPath(file):
                 logging.info("File created: %s", file)
-
+                content = ReadFile(event.src_path)
+                logging.info("File content:\n%s", content)
         def on_deleted(self, event: FileSystemEvent) -> None: #When a file is deleted
             file = getFileNameFromPath(event.src_path)
             if CheckPath(file):
                 logging.info("File deleted: %s", file)
-
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
             file = getFileNameFromPath(event.src_path)
             if CheckPath(file):
                 logging.info("File modified: %s", file)
                 content = ReadFile(event.src_path)
-                # logging.info("File content:\n%s", content)
-                make_tests(content)
+                logging.info("File content:\n%s", content)
 
     event_handler = MyEventHandler()  
     observer = Observer()
@@ -118,5 +160,11 @@ def main():
     finally:
         observer.stop()
         observer.join()
+if __name__ == "__main__":
+    main()
+    """
+    generator = TestGenerator()
+    print(generator.get_test_code(source_code))
+
 if __name__ == "__main__":
     main()
