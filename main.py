@@ -26,12 +26,12 @@ def CheckPath(file: str) -> bool:
     return True
 
 # Reading File
-def make_tests(content):
+def make_tests(file_path, content, source_path="") -> None:
     print("------------Generating tests...--------------")
     try:
         generator = TestGenerator()
         code = generator.get_test_code(content)
-        print(code)
+        WriteTest(file_path, code, source_path)
     except Exception as e:
         print("Error generating tests:", e)
     finally:
@@ -42,14 +42,16 @@ def ReadFile(file_path: str) -> str:
         content = file.read()
     return content
 
-def WriteTest(file_path: str, test_code: str) -> None:
-    folder_path = "/".join(file_path.replace("\\", "/").split("/")[:-1])
+def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
+    folder_path = "/".join(file_path.replace("\\", "/").split("/")[:])
+    folder_path = f"{folder_path}/tests"
     if os.path.exists(folder_path) == False:
         os.makedirs(folder_path)
-        
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
+
+    test_file_path = f"{folder_path}/test_{getFileNameFromPath(source_path)}"
     with open(test_file_path, 'w') as test_file:
         test_file.write(test_code)
+    logging.info("Test file written to: %s", test_file_path)
 def main():
     # Logging Configuration
     # Define custom logging format with colors
@@ -104,7 +106,7 @@ def main():
                 logging.info("File modified: %s", file)
                 content = ReadFile(event.src_path)
                 # logging.info("File content:\n%s", content)
-                make_tests(content)
+                make_tests(path_to_watch, content, event.src_path)
 
     event_handler = MyEventHandler()  
     observer = Observer()
