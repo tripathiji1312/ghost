@@ -4,6 +4,7 @@ import logging
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from chat import TestGenerator
+import init
 
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
@@ -52,9 +53,9 @@ def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
     with open(test_file_path, 'w') as test_file:
         test_file.write(test_code)
     logging.info("Test file written to: %s", test_file_path)
+
 def main():
     # Logging Configuration
-    # Define custom logging format with colors
     class CustomFormatter(logging.Formatter):
         grey = "\x1b[38;20m"
         yellow = "\x1b[33;20m"
@@ -99,6 +100,7 @@ def main():
             file = getFileNameFromPath(event.src_path)
             if CheckPath(file):
                 logging.info("File deleted: %s", file)
+                init.walk_and_delete_json(path_to_watch, event.src_path)
 
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
             file = getFileNameFromPath(event.src_path)
@@ -106,6 +108,7 @@ def main():
                 logging.info("File modified: %s", file)
                 content = ReadFile(event.src_path)
                 # logging.info("File content:\n%s", content)
+                init.walk_and_modify_json(path_to_watch, event.src_path, file)
                 make_tests(path_to_watch, content, event.src_path)
 
     event_handler = MyEventHandler()  
@@ -120,5 +123,6 @@ def main():
     finally:
         observer.stop()
         observer.join()
+
 if __name__ == "__main__":
     main()
