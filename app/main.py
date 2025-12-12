@@ -5,7 +5,8 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from chat import TestGenerator
 import init
-
+import argparse
+from spinner import Spinner
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
     # Extracts the file name from a given path
@@ -60,7 +61,9 @@ def CheckPath(file: str) -> bool:
 
 # Reading File
 def make_tests(file_path, content, source_path="") -> None:
-    print("------------Generating tests...--------------")
+    print("Starting to generate test for ", file_path)
+    spinner = Spinner("Generating Tests....")
+    spinner.start()
     try:
         generator = TestGenerator()
         code = generator.get_test_code(content)
@@ -68,7 +71,7 @@ def make_tests(file_path, content, source_path="") -> None:
     except Exception as e:
         print("Error generating tests:", e)
     finally:
-        print("------------Test generation completed--------------")
+        spinner.stop()
 # Read File
 def ReadFile(file_path: str) -> str:
     with open(file_path, 'r') as file:
@@ -91,17 +94,30 @@ def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
 def start_watching(path_to_watch):
     class MyEventHandler(FileSystemEventHandler):
         def on_created(self, event: FileSystemEvent) -> None: #When a file is created
+            pathhh = event.src_path
+            if pathhh.endswith("~"):
+                event.src_path = pathhh[:-1]
             file = getFileNameFromPath(event.src_path)
+            if file.endswith("~"):
+                file = file[:-1]
             if CheckPath(file):
                 logging.info("File created: %s", file)
 
         def on_deleted(self, event: FileSystemEvent) -> None: #When a file is deleted
+            pathhh = event.src_path
+            if pathhh.endswith("~"):
+                event.src_path = pathhh[:-1]
             file = getFileNameFromPath(event.src_path)
+            if file.endswith("~"):
+                file = file[:-1]
             if CheckPath(file):
                 logging.info("File deleted: %s", file)
-                init.walk_and_delete_json(path_to_watch, event.src_path)
+                init.walk_and_delete_json(path_to_watch, file)
 
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
+            pathhh = event.src_path
+            if pathhh.endswith("~"):
+                event.src_path = pathhh[:-1]
             file = getFileNameFromPath(event.src_path)
             if CheckPath(file):
                 logging.info("File modified: %s", file)
@@ -125,8 +141,42 @@ def start_watching(path_to_watch):
 
 def main():
     logging_setup()
-    path_to_watch = input("Enter the directory path to monitor (default is current directory): ") or "."
-    start_watching(path_to_watch)
+    path = os.getcwd()
+    # 1. Create the Argument Parser
+    parser = argparse.ArgumentParser(description="GhostTest: AI QA Agent")
+
+    # 2. Add a "Subcommand" handler (This handles 'init' vs other commands)
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # 3. Define the 'init' command
+    init_parser = subparsers.add_parser('init', help='Initialize Ghost in the current folder')
+
+    # 4. Define the 'watch' command (or default behavior)
+    # We can make the path optional. If not provided, use current dir.
+    parser.add_argument('path', nargs='?', default=os.getcwd(), help="Path to monitor")
+    # 5. Parse what the user typed
+    args = parser.parse_args()
+
+    # 6. The Router Logic
+
+    if args.command == 'init':
+        # User typed: ghost init
+        try:
+            init.ghost_init()
+        except Exception as e:
+            print(f"Error initializing Ghost: {e}")
+            if os.path.exists(f"{path}/ghost.toml"):
+                print("⚠️  Warning: Files already exists.")
+    else:
+        # User typed: ghost OR ghost /path/to/project
+        # Check if project is initialized first? (Optional but good)
+        if not os.path.exists(f"{path}/ghost.toml"):
+            print("⚠️  Warning: ghost.toml not found. Running with defaults.")
+            init.ghost_init()
+
+        start_watching(path)
+    # path_to_watch = input("Enter the directory path to monitor (default is current directory): ") or "."
+    # start_watching(path_to_watch)
 
 
 if __name__ == "__main__":

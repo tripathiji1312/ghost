@@ -94,27 +94,50 @@ def walk_and_generate_json(base_dir):
     return result
 
 # DELETION
-def walk_and_delete_json(base_dir, file):
-    output_json = f"{base_dir}/.ghost/context.json"
-    if os.path.exists(output_json):
+import os
+import json
+
+def walk_and_delete_json(base_dir, filename):
+    output_json = os.path.join(base_dir, ".ghost", "context.json")
+
+    # If JSON doesn't exist, nothing to delete
+    if not os.path.exists(output_json):
+        return False
+
+    try:
         with open(output_json, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if file in data:
-            del data[file]
-        with open(output_json, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+    except (json.JSONDecodeError, IOError):
+        # JSON invalid or unreadable
+        return False
+
+    # If file not in JSON, nothing to delete
+    if filename not in data:
+        return False
+
+    # Delete the key
+    del data[filename]
+
+    # Write updated JSON
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
+    return True
+
 
 # MODIFICATION
 def walk_and_modify_json(base_dir, file_path, file):
     conf = get_toml(base_dir)
     result = {}
     ignore_files = conf.get("scanner", {}).get("ignore_files", [])
+    # file = os.path.basename(base_dir)
+    root = os.path.dirname(base_dir)
     if file not in ignore_files:
         if file.endswith(".py"):
             # file_path = os.path.join(root, file)
             functions, classes = analyze_file(file_path)
 
-            if functions is not None:
+            if functions:
 
                 # Build readable summary string
                 func_part = "Functions: " + ", ".join(functions) if functions else "Functions: None"
@@ -128,9 +151,12 @@ def walk_and_modify_json(base_dir, file_path, file):
 
                 result[file] = f"{func_part}; {class_part}"
     output_json = f"{base_dir}/.ghost/context.json"
+    with open(output_json, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data[file] = result[file]
     walk_and_delete_json(base_dir, file)
     with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4)
+        json.dump(data, f, indent=4)
 
     return result
 
@@ -138,31 +164,37 @@ def walk_and_modify_json(base_dir, file_path, file):
 def ghost_init(path = os.getcwd()):
     spinner = Spinner("Initializing")
     spinner.start()
-    pathh = f"{path}/ghost.toml"
-    text = '''[project]
-        name = "my-app"
-        language = "python"
-
-        [ai]
-        provider = "ollama"  # or groq
-        model = "llama3"
-
-        [scanner]
-        # The user tweaks these rules, NOT the file list itself
-        ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist"]
-        ignore_files = ["setup.py"]
-
-        [tests]
-        framework = "pytest"
-        output_dir = "tests"'''
-    with open(pathh, "w") as f:
-        f.write(text)
-    logging.info("ghost.toml file created at %s", path)
-    os.mkdir(f"{path}/.ghost")
-    logging.info(".ghost directory created at %s", f"{path}/.ghost")
-    walk_and_generate_json(path)
-    logging.info("Context JSON generated at %s", f"{path}/.ghost/context.json")
-    spinner.stop()
+    try:
+        pathh = f"{path}/ghost.toml"
+        text = '''[project]
+            name = "my-app"
+            language = "python"
+    
+            [ai]
+            provider = "ollama"  # or groq
+            model = "llama3"
+    
+            [scanner]
+            # The user tweaks these rules, NOT the file list itself
+            ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist"]
+            ignore_files = ["setup.py"]
+    
+            [tests]
+            framework = "pytest"
+            output_dir = "tests"'''
+        with open(pathh, "w") as f:
+            f.write(text)
+        logging.info("ghost.toml file created at %s", path)
+        os.mkdir(f"{path}/.ghost")
+        logging.info(".ghost directory created at %s", f"{path}/.ghost")
+        walk_and_generate_json(path)
+        logging.info("Context JSON generated at %s", f"{path}/.ghost/context.json")
+        spinner.stop()
+    except Exception as e:
+        spinner.stop()
+        logging.error("Error initializing Ghost: %s", e)
+        raise
+    # spinner.stop()
     logging.info("Initialization completed.")
 
 def main():
