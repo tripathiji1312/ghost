@@ -4,6 +4,7 @@ import logging
 import ast
 import json
 import tomllib
+from spinner import Spinner
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -32,17 +33,17 @@ def get_toml(path):
         config = tomllib.load(f)
     return config
 
+# ANALYSIS
 def add_parent_links(tree):
     """Attach parent references to AST nodes for top-level function detection."""
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
             child.parent = node
 
-
+# ANALYSIS
 def analyze_file(path):
     with open(path, "r", encoding="utf-8") as f:
         source = f.read()
-
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -55,7 +56,7 @@ def analyze_file(path):
 
     return analyzer.functions, analyzer.classes
 
-
+# GENERATION
 def walk_and_generate_json(base_dir):
     result = {}
     conf = get_toml(base_dir)
@@ -92,6 +93,7 @@ def walk_and_generate_json(base_dir):
 
     return result
 
+# DELETION
 def walk_and_delete_json(base_dir, file):
     output_json = f"{base_dir}/.ghost/context.json"
     if os.path.exists(output_json):
@@ -102,6 +104,7 @@ def walk_and_delete_json(base_dir, file):
         with open(output_json, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
+# MODIFICATION
 def walk_and_modify_json(base_dir, file_path, file):
     conf = get_toml(base_dir)
     result = {}
@@ -130,6 +133,37 @@ def walk_and_modify_json(base_dir, file_path, file):
         json.dump(result, f, indent=4)
 
     return result
+
+# INITIALIZATION
+def ghost_init(path = os.getcwd()):
+    spinner = Spinner("Initializing")
+    spinner.start()
+    pathh = f"{path}/ghost.toml"
+    text = '''[project]
+        name = "my-app"
+        language = "python"
+
+        [ai]
+        provider = "ollama"  # or groq
+        model = "llama3"
+
+        [scanner]
+        # The user tweaks these rules, NOT the file list itself
+        ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist"]
+        ignore_files = ["setup.py"]
+
+        [tests]
+        framework = "pytest"
+        output_dir = "tests"'''
+    with open(pathh, "w") as f:
+        f.write(text)
+    logging.info("ghost.toml file created at %s", path)
+    os.mkdir(f"{path}/.ghost")
+    logging.info(".ghost directory created at %s", f"{path}/.ghost")
+    walk_and_generate_json(path)
+    logging.info("Context JSON generated at %s", f"{path}/.ghost/context.json")
+    spinner.stop()
+    logging.info("Initialization completed.")
 
 def main():
     class CustomFormatter(logging.Formatter):
@@ -163,32 +197,8 @@ def main():
     ch.setFormatter(CustomFormatter())
     logger.addHandler(ch)
 
-    text = '''[project]
-    name = "my-app"
-    language = "python"
-    
-    [ai]
-    provider = "ollama"  # or groq
-    model = "llama3"
-    
-    [scanner]
-    # The user tweaks these rules, NOT the file list itself
-    ignore_dirs = ["venv", "node_modules", ".git", "__pycache__", "dist"]
-    ignore_files = ["setup.py"]
-    
-    [tests]
-    framework = "pytest"
-    output_dir = "tests"'''
-
-    path = os.getcwd()
-    pathh = f"{path}/ghost.toml"
-    with open(pathh, "w") as f:
-        f.write(text)
-    logging.info("ghost.toml file created at %s", path)
-    os.mkdir(f"{path}/.ghost")
-    logging.info(".ghost directory created at %s", f"{path}/.ghost")
-    walk_and_generate_json(path)
-    logging.info("Context JSON generated at %s", f"{path}/.ghost/context.json")
+ # INITIALIZATION
+    ghost_init()
 
 if __name__ == "__main__":
     main()
