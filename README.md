@@ -40,7 +40,7 @@ graph TD
 ## Key Capabilities
 
 ### Autonomous Generation
-Ghost analyzes your Python source code to understand its logic, edge cases, and types. It then generates a complete `pytest` suite covering happy paths, error conditions, and boundary cases.
+Ghost analyzes your Python source code to understand its logic, edge cases, and types. It then generates a complete test suite covering happy paths, error conditions, and boundary cases in any framework.
 
 ### Self-Healing Engine
 When a test fails, Ghost doesn't just report the error. It captures the stdout, stderr, and stack trace, feeds them back into the LLM, and generates a patch to fix the test code. It repeats this process until the test passes.
@@ -49,11 +49,12 @@ When a test fails, Ghost doesn't just report the error. It captures the stdout, 
 Designed to run in the background. Ghost uses `watchdog` to monitor file system events. As soon as you save a file, Ghost triggers the testing cycle, providing immediate feedback.
 
 ### Multi-Provider Architecture
-Ghost is built to be model-agnostic. It supports:
+Ghost is built to be model-agnostic. It supports (with your API keys):
 *   **Groq**: For ultra-low latency feedback loops (recommended for watch mode).
-*   **OpenAI**: GPT-4o for complex reasoning and difficult test scenarios.
-*   **Anthropic**: Claude 3.5 Sonnet for high-quality, idiomatic code generation.
+*   **OpenAI**: GPT for complex reasoning and difficult test scenarios.
+*   **Anthropic**: Claude for high-quality, idiomatic code generation.
 *   **Ollama**: For local, privacy-focused development using Llama 3 or DeepSeek.
+
 
 ## Installation
 
@@ -72,7 +73,7 @@ uv pip install ghosttest
 ### From Source
 
 ```bash
-git clone https://github.com/ghost-team/ghost.git
+git clone git@github.com:tripathiji1312/ghost.git
 cd ghost
 pip install -e .
 ```
