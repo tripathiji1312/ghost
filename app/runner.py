@@ -1,11 +1,13 @@
 import subprocess
 import os
+import sys
 
-def run_test(test_file_path):
+def run_test(test_file_path, source_path):
+    python_exe = sys.executable
     my_env = os.environ.copy()
-    my_env['SOHINIPATH'] = os.getcwd()
+    my_env['PYTHONPATH'] = source_path
     result = subprocess.run(
-        ["pytest", test_file_path],
+        [python_exe, "-m", "pytest", test_file_path],
         capture_output=True,  # Grab the logs
         text=True,  # Return string, not bytes
         env=my_env  # Inject the path fix

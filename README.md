@@ -1,292 +1,143 @@
-# 👻 Ghost
+# Ghost
 
-**AI-Powered Test Generation & Healing for Python**
+[![PyPI](https://img.shields.io/pypi/v/ghosttest.svg)](https://pypi.org/project/ghosttest/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/ghosttest.svg)](https://pypi.org/project/ghosttest/)
+[![License](https://img.shields.io/github/license/ghost-team/ghost.svg)](LICENSE)
+[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <img src="logo.png" alt="Ghost Logo" width="200" height="auto" />
+</p>
 
-Ghost automatically generates, runs, and **heals** your Python tests using AI. Just write your code - Ghost handles the tests.
+<p align="center">
+  <b>Autonomous Test Generation & Self-Healing for Python</b>
+</p>
 
-```
-   ▄████  ██░ ██  ▒█████    ██████ ▄▄▄█████▓
-  ██▒ ▀█▒▓██░ ██▒▒██▒  ██▒▒██    ▒ ▓  ██▒ ▓▒
- ▒██░▄▄▄░▒██▀▀██░▒██░  ██▒░ ▓██▄   ▒ ▓██░ ▒░
- ░▓█  ██▓░▓█ ░██ ▒██   ██░  ▒   ██▒░ ▓██▓ ░ 
- ░▒▓███▀▒░▓█▒░██▓░ ████▓▒░▒██████▒▒  ▒██▒ ░ 
-```
-
----
-
-## ✨ Features
-
-- 🤖 **Multi-Provider AI** - Works with Groq, OpenAI, Anthropic, Ollama (local), and more
-- 🔄 **Self-Healing Tests** - Automatically fixes failing tests
-- 👁️ **File Watcher** - Generates tests as you code
-- ⚖️ **AI Judge** - Determines if bugs are in code or tests
-- 🎨 **Beautiful CLI** - Stunning terminal output with animations
-- ⚡ **Rate Limiting** - Smart handling of API limits
+<p align="center">
+  Ghost is an intelligent agent that lives in your terminal. It watches your codebase, automatically generates comprehensive test suites, and—most importantly—<b>fixes them when they fail</b>.
+</p>
 
 ---
 
-## 🚀 Quick Start
+## The Workflow
 
-### Installation
+Ghost operates on a continuous feedback loop, ensuring your tests are always green without manual intervention.
+
+```mermaid
+graph TD
+    A[File Change Detected] -->|Ghost Watcher| B(Analyze Code)
+    B --> C{Tests Exist?}
+    C -- No --> D[Generate New Tests]
+    C -- Yes --> E[Run Existing Tests]
+    D --> E
+    E --> F{Tests Pass?}
+    F -- Yes --> G[✅ All Green]
+    F -- No --> H[Analyze Stack Trace]
+    H --> I[Self-Healing Agent]
+    I -->|Apply Fix| E
+```
+
+## Key Capabilities
+
+### Autonomous Generation
+Ghost analyzes your Python source code to understand its logic, edge cases, and types. It then generates a complete `pytest` suite covering happy paths, error conditions, and boundary cases.
+
+### Self-Healing Engine
+When a test fails, Ghost doesn't just report the error. It captures the stdout, stderr, and stack trace, feeds them back into the LLM, and generates a patch to fix the test code. It repeats this process until the test passes.
+
+### Real-time Watcher
+Designed to run in the background. Ghost uses `watchdog` to monitor file system events. As soon as you save a file, Ghost triggers the testing cycle, providing immediate feedback.
+
+### Multi-Provider Architecture
+Ghost is built to be model-agnostic. It supports:
+*   **Groq**: For ultra-low latency feedback loops (recommended for watch mode).
+*   **OpenAI**: GPT-4o for complex reasoning and difficult test scenarios.
+*   **Anthropic**: Claude 3.5 Sonnet for high-quality, idiomatic code generation.
+*   **Ollama**: For local, privacy-focused development using Llama 3 or DeepSeek.
+
+## Installation
+
+### Using pip (Standard)
 
 ```bash
-# Install with pip
 pip install ghosttest
+```
 
-# Or with uv (recommended)
+### Using uv (Fastest)
+
+```bash
 uv pip install ghosttest
 ```
 
-### Setup
+### From Source
 
 ```bash
-# Initialize Ghost in your project
-ghost init
-
-# Or specify a directory
-ghost init ./myproject
+git clone https://github.com/ghost-team/ghost.git
+cd ghost
+pip install -e .
 ```
 
-### Usage
+## Getting Started
 
-```bash
-# Watch for changes and auto-generate tests
-ghost watch
+1.  **Initialize Ghost**
+    Run the initialization command in your project root. This creates a `ghost.toml` configuration file.
 
-# Generate tests for a specific file
-ghost generate app.py
+    ```bash
+    ghost init
+    ```
 
-# View available AI providers
-ghost providers
+2.  **Configure API Keys**
+    Export your API keys as environment variables or add them to a `.env` file.
 
-# Check installation health
-ghost doctor
-```
+    ```bash
+    export OPENAI_API_KEY=sk-...
+    # or
+    export GROQ_API_KEY=gsk_...
+    ```
 
----
+3.  **Start Watching**
+    Launch the daemon. Ghost will now monitor your project.
 
-## 🤖 Supported AI Providers
+    ```bash
+    ghost watch
+    ```
 
-| Provider | Type | Free Tier | Speed | Setup |
-|----------|------|-----------|-------|-------|
-| **Ollama** | Local | ✅ Unlimited | Fast | `ollama serve` |
-| **Groq** | Cloud | ✅ 30 RPM | ⚡ Ultra-fast | `GROQ_API_KEY` |
-| **OpenAI** | Cloud | ❌ Paid | Fast | `OPENAI_API_KEY` |
-| **Anthropic** | Cloud | ❌ Paid | Fast | `ANTHROPIC_API_KEY` |
-| **OpenRouter** | Cloud | Pay-per-use | Varies | `OPENROUTER_API_KEY` |
-| **LM Studio** | Local | ✅ Unlimited | Varies | Start app |
+## Command Line Interface
 
-### Setting up Ollama (Free & Local)
+| Command | Arguments | Description |
+|:--------|:----------|:------------|
+| `ghost init` | `[PATH]` | Initializes a new Ghost configuration in the specified directory. Defaults to current directory. |
+| `ghost watch` | `[PATH]` | Starts the file watcher daemon. Monitors for changes and triggers the test/heal loop. |
+| `ghost generate` | `<FILE>` | Manually triggers test generation for a specific Python file. |
+| `ghost config` | N/A | Opens an interactive configuration wizard to set providers, models, and paths. |
+| `ghost providers` | N/A | Lists all currently supported AI providers and available models. |
+| `ghost version` | N/A | Displays the current installed version of Ghost. |
 
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
+## Configuration
 
-# Start the server
-ollama serve
-
-# Pull a coding model
-ollama pull llama3.2
-# or for better code generation:
-ollama pull deepseek-coder-v2
-ollama pull qwen2.5-coder
-
-# Initialize Ghost with Ollama
-ghost init -p ollama
-```
-
-### Setting up Groq (Free Cloud)
-
-```bash
-# Get your free API key from https://console.groq.com
-export GROQ_API_KEY="your-key-here"
-
-# Initialize Ghost with Groq
-ghost init -p groq
-```
-
----
-
-## 📖 Commands
-
-### `ghost init [PATH]`
-
-Initialize Ghost in a directory. Creates `ghost.toml` config and `.ghost/` directory.
-
-```bash
-ghost init                    # Current directory
-ghost init ./myproject        # Specific directory
-ghost init -p ollama          # Use Ollama (local)
-ghost init -p groq -m llama-3.3-70b  # Groq with specific model
-```
-
-### `ghost watch [PATH]`
-
-Watch for file changes and automatically generate tests.
-
-```bash
-ghost watch              # Watch current directory
-ghost watch ./src        # Watch specific directory
-ghost watch -V           # Verbose mode
-```
-
-### `ghost generate <FILE>`
-
-Generate tests for a specific Python file.
-
-```bash
-ghost generate app.py
-ghost generate src/utils.py -o tests/test_utils.py
-ghost generate app.py --force  # Overwrite existing
-```
-
-### `ghost config`
-
-View or modify Ghost configuration.
-
-```bash
-ghost config --show               # Show current config
-ghost config --set-provider openai
-ghost config --set-model gpt-4o-mini
-```
-
-### `ghost providers`
-
-List available AI providers and their status.
-
-```bash
-ghost providers          # List all
-ghost providers --check  # Check connectivity
-```
-
-### `ghost doctor`
-
-Check Ghost installation and dependencies.
-
-```bash
-ghost doctor
-```
-
----
-
-## ⚙️ Configuration
-
-Ghost uses a `ghost.toml` file for project configuration:
+Ghost is highly configurable via `ghost.toml`.
 
 ```toml
-[project]
-name = "my-app"
-language = "python"
+[ghost]
+# The AI provider to use (openai, anthropic, groq, ollama)
+provider = "openai"
 
-[ai]
-provider = "ollama"           # groq, openai, ollama, anthropic, openrouter
-model = "llama3.2"           # Model to use
-rate_limit_rpm = 30          # Requests per minute
+# The specific model identifier
+model = "gpt-4o"
 
-[scanner]
-ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "tests"]
-ignore_files = ["setup.py", "conftest.py"]
+# Directory where tests should be generated
+test_dir = "tests"
 
-[tests]
-framework = "pytest"         # pytest or unittest
-output_dir = "tests"
-auto_heal = true             # Auto-fix failing tests
-max_heal_attempts = 3
-use_judge = true             # Use AI judge for test failures
+# Maximum number of healing attempts before giving up
+max_retries = 3
 
-[watcher]
-debounce_seconds = 15        # Ignore rapid consecutive saves
+# List of files or directories to ignore
+ignore = [
+    "setup.py",
+    "migrations/"
+]
 ```
 
-### Environment Variables
+## License
 
-```bash
-# API Keys (set based on your provider)
-export GROQ_API_KEY="your-groq-key"
-export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"
-export OPENROUTER_API_KEY="your-openrouter-key"
-
-# Custom endpoints
-export OLLAMA_HOST="http://localhost:11434"
-export GHOST_BASE_URL="https://your-custom-endpoint.com/v1"
-```
-
----
-
-## 🏗️ How It Works
-
-1. **File Watcher** monitors your Python files for changes
-2. **Code Analyzer** extracts functions, classes, and structure
-3. **AI Generator** creates comprehensive tests with:
-   - Happy path tests
-   - Edge cases
-   - Error handling
-   - Mocked dependencies
-4. **Test Runner** executes the generated tests
-5. **AI Judge** analyzes failures to determine root cause
-6. **Self-Healer** automatically fixes test issues
-
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Your Code  │────▶│   Ghost AI   │────▶│   Tests     │
-└─────────────┘     └──────────────┘     └─────────────┘
-       │                   │                    │
-       │            ┌──────┴──────┐            │
-       │            ▼             ▼            │
-       │     ┌──────────┐  ┌──────────┐       │
-       │     │ Generate │  │   Heal   │◀──────┘
-       │     └──────────┘  └──────────┘
-       │                         │
-       └─────────────────────────┘
-```
-
----
-
-## 🎨 Beautiful CLI
-
-Ghost features a stunning terminal interface:
-
-```
-   ▄████  ██░ ██  ▒█████    ██████ ▄▄▄█████▓
-  ...
-  AI-Powered Test Generation & Healing
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  👻 Ghost Demo
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-▸ Status Messages
-───────────────────
-✔ Operation completed successfully
-✖ Something went wrong  
-⚠ Proceed with caution
-ℹ Here's some information
-
-🪄 Generating tests for example.py
-⠋ Processing files (3.0s)
-✔ Tests generated for example.py
-⚖️ Consulting judge for: example.py
-🔨 Verdict: Test needs fixing
-```
-
----
-
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
----
-
-<p align="center">
-  Made with 👻 by the Ghost Team
-</p>
+Distributed under the MIT License. See `LICENSE` for more information.

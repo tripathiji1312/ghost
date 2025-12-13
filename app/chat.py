@@ -19,7 +19,7 @@ class TestGenerator:
     Supports: Groq, OpenAI, Anthropic, Ollama, OpenRouter, LM Studio, and custom endpoints.
     """
     
-    def __init__(self, api_key: Optional[str] = "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", config: Optional[GhostConfig] = None):
+    def __init__(self, api_key: Optional[str] = None, config: Optional[GhostConfig] = None):
         """
         Initialize the test generator.
         
@@ -103,7 +103,14 @@ class TestGenerator:
                 
                 {project_structure}
             The output must be immediately runnable without modification.
-    
+            1. You MUST include this code block at the very top of the test file, before any other imports:
+
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                
+                2. After that block, import the module normally (e.g., 'from app import main').
+                3. Do NOT use relative imports (like 'from ..app import').
             ABSOLUTE OUTPUT CONSTRAINTS (NON-NEGOTIABLE):
             1. Output ONLY valid Python source code.
             2. Do NOT include Markdown, backticks, explanations, annotations, or conversational text.
@@ -175,7 +182,14 @@ class TestGenerator:
         project_structure = get_project_tree(source_path)
         return f"""
                     You are an expert Python test engineer. Your task is to fix errors in a previously generated test file.
+                    1. You MUST include this code block at the very top of the test file, before any other imports:
 
+                    import sys
+                    import os
+                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                    
+                    2. After that block, import the module normally (e.g., 'from app import main').
+                    3. Do NOT use relative imports (like 'from ..app import').
                 CRITICAL: Output ONLY valid Python code. No markdown, no backticks, no explanations.
                 
                 ## Context

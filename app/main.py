@@ -79,63 +79,75 @@ def CheckPath(file: str, full_path: str = "") -> bool:
     return True
 
 # Reading File
+count = 0
 def check_test(file_path: str, source_path: str, file: str) -> bool:
+    global count
     print(f"File: {file}, file_path: {file_path}, source_path: {source_path}")
     spinner1 = GhostSpinner("Running tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
-    spinner1.start()
-    folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
-    folder_path = f"{folder_path}/tests"
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
-    cont = ReadFile(test_file_path)
-    return_code, stdout, stderr = run_test(test_file_path)
-    errors = {"return_code": return_code, "stderr": stderr, "stdout": stdout}
-    error_type = classify_error(stderr, stdout)
-    curr_path = str(source_path)
-    spinner1.stop()
-    try:
+    while count < 3:
+        count += 1
+        print(f"Count: {count}")
+        spinner1.start()
+        folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
+        folder_path = f"{folder_path}/tests"
+        test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
+        cont = ReadFile(test_file_path)
+        return_code, stdout, stderr = run_test(test_file_path, source_path)
+        errors = {"return_code": return_code, "stderr": stderr, "stdout": stdout}
+        error_type = classify_error(stderr, stdout)
+        curr_path = str(source_path)
+        spinner1.stop()
+        try:
 
-        if error_type == "SYNTAX" and error_type != "UNKNOWN":
-            Console.warning(f"Syntax errors detected in {test_file_path}")
-            countdown(5, "Preparing to heal")
+            if error_type == "SYNTAX" and error_type != "UNKNOWN":
+                Console.warning(f"Syntax errors detected in {test_file_path}")
+                countdown(5, "Preparing to heal")
 
-            spinner2 = GhostSpinner("Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
-            spinner2.start()
-            config = get_config(Path(source_path) if source_path else None)
-            generator = TestGenerator(config=config)
-            code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
-            WriteTest(file_path, code, source_path)
-            spinner2.stop(message="Test healed successfully")
-        else:
-            Console.judging(file)
-            spinner3 = GhostSpinner("Consulting the judge", style=SpinnerStyle.DOTS, color=Colors.YELLOW)
-            spinner3.start()
-            countdown(5, "Analyzing code")
-            
-            config = get_config(Path(source_path) if source_path else None)
-            judge = TestGenerator(config=config)
-            result = judge.consult_the_judge(cont, curr_path, file, test_file_path, errors)
-            spinner3.stop(message="Judge verdict received")
-            
-            Console.verdict(result == "BUG_IN_CODE")
-            
-            if result == "BUG_IN_CODE":
-                countdown(5, "Preparing fix")
-                spinner4 = GhostSpinner("Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
-                spinner4.start()
+                spinner2 = GhostSpinner("Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
+                spinner2.start()
+                config = get_config(Path(source_path) if source_path else None)
                 generator = TestGenerator(config=config)
                 code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
                 WriteTest(file_path, code, source_path)
-                spinner4.stop(message="Tests fixed successfully")
-            elif result == "FIX_TEST":
-                Console.newline()
-                Console.error("BUG DETECTED IN SOURCE CODE!", prefix="CRITICAL")
-                Console.info("The test found a discrepancy, but the AI believes the code is at fault.")
-                Console.warning("Ghost will NOT update the test to match buggy code.")
-                Console.newline()
+                spinner2.stop(message="Test healed successfully")
+            elif error_type == "LOGIC":
+                Console.judging(file)
+                spinner3 = GhostSpinner("Consulting the judge", style=SpinnerStyle.DOTS, color=Colors.YELLOW)
+                spinner3.start()
+                countdown(5, "Analyzing code")
 
-    except Exception as e:
-        Console.error(f"Error consulting the judge: {e}")
-        return False
+                config = get_config(Path(source_path) if source_path else None)
+                judge = TestGenerator(config=config)
+                result = judge.consult_the_judge(cont, curr_path, file, test_file_path, errors)
+                spinner3.stop(message="Judge verdict received")
+
+                Console.verdict(result == "BUG_IN_CODE")
+
+                if result == "BUG_IN_CODE":
+                    countdown(5, "Preparing fix")
+                    spinner4 = GhostSpinner("Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
+                    spinner4.start()
+                    generator = TestGenerator(config=config)
+                    code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
+                    WriteTest(file_path, code, source_path)
+                    spinner4.stop(message="Tests fixed successfully")
+                elif result == "FIX_TEST":
+                    Console.newline()
+                    Console.error("BUG DETECTED IN SOURCE CODE!", prefix="CRITICAL")
+                    Console.info("The test found a discrepancy, but the AI believes the code is at fault.")
+                    Console.warning("Ghost will NOT update the test to match buggy code.")
+                    Console.newline()
+                    break
+
+            else:
+                Console.error(f"No known bug found!")
+                break
+
+        except Exception as e:
+            Console.error(f"Error consulting the judge: {e}")
+            return False
+
+
 
     return True
 
@@ -163,13 +175,18 @@ def make_tests(file_path, content, source_path="", file="") -> None:
         return
     check_test(file_path, source_path, file)
 
-def ReadFile(file_path: str) -> str:
-    with open(file_path, 'r') as file:
-        content = file.read()
-    return content
+def ReadFile(file_path: str) -> None:
+    if not os.path.isfile(file_path):
+        return None
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
 
 # Write Test File
-def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
+def WriteTest(file_path: str, test_code: str, source_path: str) -> str | None:
     folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
     folder_path = f"{folder_path}/tests"
     if os.path.exists(folder_path) == False:
@@ -239,6 +256,8 @@ def start_watching(path_to_watch):
 
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
             pathhh = str(event.src_path)
+            if "__pycache__" in pathhh or pathhh.endswith(".pyc"):
+                return
             if not pathhh.endswith("~"):
 
                 file = getFileNameFromPath(str(event.src_path))
