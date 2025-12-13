@@ -3,15 +3,16 @@ import time
 import logging
 from time import sleep
 from pathlib import Path
-from openai import api_key
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from chat import TestGenerator
-import init
+import init as ghost_init_module
 import argparse
 from console import Console, GhostSpinner, SpinnerStyle, Colors, Icons, countdown
-from config import API_KEY
+from config import get_config, GhostConfig
 from runner import *
+
+
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
     # Extracts the file name from a given path
@@ -79,26 +80,28 @@ def CheckPath(file: str, full_path: str = "") -> bool:
 
 # Reading File
 def check_test(file_path: str, source_path: str, file: str) -> bool:
+    print(f"File: {file}, file_path: {file_path}, source_path: {source_path}")
     spinner1 = GhostSpinner("Running tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
     spinner1.start()
-    folder_path = "/".join(str(file_path).replace("\\", "/").split("/")[:])
+    folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
     folder_path = f"{folder_path}/tests"
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(source_path)}"
+    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
     cont = ReadFile(test_file_path)
     return_code, stdout, stderr = run_test(test_file_path)
     errors = {"return_code": return_code, "stderr": stderr, "stdout": stdout}
     error_type = classify_error(stderr, stdout)
-    curr_path = str(file_path)
+    curr_path = str(source_path)
     spinner1.stop()
     try:
 
         if error_type == "SYNTAX" and error_type != "UNKNOWN":
             Console.warning(f"Syntax errors detected in {test_file_path}")
             countdown(5, "Preparing to heal")
-            
+
             spinner2 = GhostSpinner("Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
             spinner2.start()
-            generator = TestGenerator(API_KEY)
+            config = get_config(Path(source_path) if source_path else None)
+            generator = TestGenerator(config=config)
             code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
             WriteTest(file_path, code, source_path)
             spinner2.stop(message="Test healed successfully")
@@ -108,7 +111,8 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
             spinner3.start()
             countdown(5, "Analyzing code")
             
-            judge = TestGenerator(API_KEY)
+            config = get_config(Path(source_path) if source_path else None)
+            judge = TestGenerator(config=config)
             result = judge.consult_the_judge(cont, curr_path, file, test_file_path, errors)
             spinner3.stop(message="Judge verdict received")
             
@@ -118,7 +122,7 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
                 countdown(5, "Preparing fix")
                 spinner4 = GhostSpinner("Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
                 spinner4.start()
-                generator = TestGenerator(API_KEY)
+                generator = TestGenerator(config=config)
                 code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
                 WriteTest(file_path, code, source_path)
                 spinner4.stop(message="Tests fixed successfully")
@@ -137,13 +141,16 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
 
 
 def make_tests(file_path, content, source_path="", file="") -> None:
+    print(f"File: {file}, file_path: {file_path}, source_path: {source_path}")
     Console.generating(file)
     spinner = GhostSpinner("Generating tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
     spinner.start()
-    curr_path = str(file_path)
+    curr_path = str(source_path)
     flag = False
     try:
-        generator = TestGenerator(API_KEY)
+        # Load config from the source path to ensure .env is loaded
+        config = get_config(Path(source_path) if source_path else None)
+        generator = TestGenerator(config=config)
         code = generator.get_test_code(content, curr_path, file)
         WriteTest(file_path, code, source_path)
         flag = True
@@ -163,18 +170,26 @@ def ReadFile(file_path: str) -> str:
 
 # Write Test File
 def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
-    folder_path = "/".join(str(file_path).replace("\\", "/").split("/")[:])
+    folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
     folder_path = f"{folder_path}/tests"
     if os.path.exists(folder_path) == False:
         os.makedirs(folder_path)
 
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(source_path)}"
+    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
     with open(test_file_path, 'w') as test_file:
         test_file.write(test_code)
     Console.success(f"Test file written: {test_file_path}")
 
 # Watchdog Event Handler
 def start_watching(path_to_watch):
+    # Load .env from the project directory
+    from pathlib import Path
+    from dotenv import load_dotenv
+    project_path = Path(path_to_watch).resolve()
+    env_file = project_path / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=True)
+    
     # Debounce mechanism to prevent duplicate events
     last_processed = {}
     currently_processing = set()  # Track files being processed
@@ -202,44 +217,45 @@ def start_watching(path_to_watch):
             last_processed[file_path] = time.time()
         
         def on_created(self, event: FileSystemEvent) -> None: #When a file is created
-            pathhh = event.src_path
+            pathhh = str(event.src_path)
             if pathhh.endswith("~"):
                 event.src_path = pathhh[:-1]
-            file = getFileNameFromPath(event.src_path)
+            file = getFileNameFromPath(str(event.src_path))
             if file.endswith("~"):
                 file = file[:-1]
-            if CheckPath(file, event.src_path):
+            if CheckPath(file, str(event.src_path)):
                 Console.file_changed(file, "created")
 
         def on_deleted(self, event: FileSystemEvent) -> None: #When a file is deleted
-            pathhh = event.src_path
+            pathhh = str(event.src_path)
             if pathhh.endswith("~"):
                 event.src_path = pathhh[:-1]
-            file = getFileNameFromPath(event.src_path)
+            file = getFileNameFromPath(str(event.src_path))
             if file.endswith("~"):
                 file = file[:-1]
-            if CheckPath(file, event.src_path):
+            if CheckPath(file, str(event.src_path)):
                 Console.file_changed(file, "deleted")
-                init.walk_and_delete_json(path_to_watch, file)
+                ghost_init_module.walk_and_delete_json(path_to_watch, file)
 
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
-            pathhh = event.src_path
+            pathhh = str(event.src_path)
             if not pathhh.endswith("~"):
 
-                file = getFileNameFromPath(event.src_path)
+                file = getFileNameFromPath(str(event.src_path))
                 # file_bad = getFileNameFromPath(pathhh)
-                if CheckPath(file, event.src_path) and self._should_process(event.src_path):
-                    self._mark_processing_start(event.src_path)
+                if CheckPath(file, str(event.src_path)) and self._should_process(str(event.src_path)):
+                    self._mark_processing_start(str(event.src_path))
                     try:
                         Console.file_changed(file, "modified")
-                        content = ReadFile(event.src_path)
+                        content = ReadFile(str(event.src_path))
                         # logging.info("File content:\n%s", content)
-                        result = init.walk_and_modify_json(path_to_watch, event.src_path, file)
+                        result = ghost_init_module.walk_and_modify_json(path_to_watch, str(event.src_path), file)
                         # Skip test generation if file has syntax errors
                         if result is not None:
-                            make_tests(path_to_watch, content, event.src_path, file)
+                            # Pass: file_path (the modified file), content, source_path (project root), filename
+                            make_tests(str(event.src_path), content, str(path_to_watch), file)
                     finally:
-                        self._mark_processing_done(event.src_path)
+                        self._mark_processing_done(str(event.src_path))
 
     event_handler = MyEventHandler()
     observer = Observer()
@@ -288,7 +304,7 @@ def main():
     if args.init:
         try:
             Console.info(f"Initializing Ghost in {target_path}")
-            init.ghost_init(target_path)
+            ghost_init_module.ghost_init(target_path)
             Console.success("Ghost initialized successfully!")
             return
         except Exception as e:
@@ -299,7 +315,7 @@ def main():
 
     if not ghost_file.exists():
         Console.warning("ghost.toml not found. Initializing with defaults...")
-        init.ghost_init(target_path)
+        ghost_init_module.ghost_init(target_path)
 
     Console.section("Starting File Watcher")
     start_watching(target_path)

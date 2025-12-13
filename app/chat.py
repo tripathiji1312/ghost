@@ -1,30 +1,62 @@
 import os
 import logging
-from groq import Groq
-from openai import OpenAI
 import re
 import tomllib
 import json
 from datetime import datetime
+from typing import Optional, Dict, Any
+
 from runner import run_test, get_project_tree
 from rate_limiter import RateLimiter, call_with_retry
-class TestGenerator:
-    def __init__(self, api_key="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"):
-        self.client = Groq(
-            api_key=api_key,
-        )
+from config import GhostConfig, get_config, get_api_key
+from providers import get_provider, BaseProvider
 
-    @call_with_retry(max_retries=5, base_delay=2.0)
-    def _call_api(self, messages, temperature=0.1, model="openai/gpt-oss-120b"):
+
+class TestGenerator:
+    """
+    AI-powered test generator supporting multiple providers.
+    
+    Supports: Groq, OpenAI, Anthropic, Ollama, OpenRouter, LM Studio, and custom endpoints.
+    """
+    
+    def __init__(self, api_key: Optional[str] = "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", config: Optional[GhostConfig] = None):
         """
-        Internal method to call the API with rate limiting and retry logic.
+        Initialize the test generator.
+        
+        Args:
+            api_key: Optional API key (overrides config/environment)
+            config: Optional GhostConfig instance
         """
-        RateLimiter.wait()  # Enforce rate limiting
-        return self.client.chat.completions.create(
-            messages=messages,
-            temperature=temperature,
-            model=model,
-        )
+        self.config = config or get_config()
+        self._provider: Optional[BaseProvider] = None
+        self._api_key = api_key
+        
+        # Set rate limit based on config
+        RateLimiter.set_interval(60.0 / max(self.config.ai.rate_limit_rpm, 1))
+    
+    @property
+    def provider(self) -> BaseProvider:
+        """Lazy-load the AI provider."""
+        if self._provider is None:
+            provider_name = self.config.ai.provider.lower()
+            api_key = self._api_key or self.config.ai.api_key or get_api_key(provider_name)
+            
+            kwargs = {}
+            if api_key:
+                kwargs['api_key'] = api_key
+            if self.config.ai.base_url:
+                kwargs['base_url'] = self.config.ai.base_url
+            
+            self._provider = get_provider(provider_name, **kwargs)
+        
+        return self._provider
+    
+    def _call_api(self, messages: list, temperature: float = 0.1) -> str:
+        """
+        Call the AI API with automatic provider detection.
+        """
+        model = self.config.ai.model
+        return self.provider.chat(messages, model=model, temperature=temperature)
 
     def get_test_code(self, source_code, source_path='.', filename="", testing=False, test_file_path="", errors=None):
         if testing:
@@ -32,20 +64,19 @@ class TestGenerator:
         else:
             prompt = self.create_prompt(source_code, source_path, filename)
         logging.debug("Prompt generated!")
-        chat_completion = self._call_api(
+        
+        response = self._call_api(
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a code generator. Output only code."
-                    },
+                    "content": "You are a code generator. Output only valid Python code. No markdown, no explanations."
+                },
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            model="openai/gpt-oss-120b",
         )
 
-        code = chat_completion.choices[0].message.content
-        cleaned_code = self.clean_llm_response(code)
+        cleaned_code = self.clean_llm_response(response)
         return cleaned_code
 
     def create_prompt(self, source_code, source_path, filename):
@@ -259,19 +290,23 @@ class TestGenerator:
         
         OUTPUT: OUTPUT ONLY ONE OF THESE TWO STRINGS. NO EXPLANATION.
         """
-        chat_completion = self._call_api(
+        response = self._call_api(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a code defect analyzer. Output only one of these two strings: 'BUG_IN_CODE' or 'FIX_TEST'."
+                    "content": "You are a code defect analyzer. Output only one of these two strings: 'BUG_IN_CODE' or 'FIX_TEST'. No other text."
                 },
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            model="openai/gpt-oss-120b",
         )
 
-        ans = chat_completion.choices[0].message.content
+        # Clean and validate response
+        ans = response.strip().upper()
+        if "BUG_IN_CODE" in ans:
+            return "BUG_IN_CODE"
+        elif "FIX_TEST" in ans:
+            return "FIX_TEST"
         return ans
 
 

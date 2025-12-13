@@ -4,7 +4,7 @@ import logging
 import ast
 import json
 import tomllib
-from spinner import Spinner 
+from console import Console, GhostSpinner, SpinnerStyle, Colors 
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -169,40 +169,51 @@ def walk_and_modify_json(base_dir, file_path, file):
 
 # INITIALIZATION
 def ghost_init(path = os.getcwd()):
-    spinner = Spinner("Initializing")
+    spinner = GhostSpinner("Initializing Ghost", style=SpinnerStyle.DOTS, color=Colors.MAGENTA)
     spinner.start()
     try:
         pathh = f"{path}/ghost.toml"
         text = '''[project]
-            name = "my-app"
-            language = "python"
-    
-            [ai]
-            provider = "ollama"  # or groq
-            model = "llama3"
-    
-            [scanner]
-            # The user tweaks these rules, NOT the file list itself
-            ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist", ".ghost", "tests"]
-            ignore_files = ["setup.py"]
-    
-            [tests]  
-            framework = "pytest"
-            output_dir = "tests"'''
+name = "my-app"
+language = "python"
+
+[ai]
+provider = "ollama"  # Options: groq, openai, ollama, anthropic, openrouter
+model = "llama3.2"
+
+# Rate limiting (requests per minute)
+rate_limit_rpm = 30
+
+[scanner]
+ignore_dirs = [".venv", "venv", "node_modules", ".git", "__pycache__", "dist", ".ghost", "tests"]
+ignore_files = ["setup.py", "conftest.py"]
+
+[tests]
+framework = "pytest"
+output_dir = "tests"
+auto_heal = true
+max_heal_attempts = 3
+
+[watcher]
+debounce_seconds = 15
+'''
         with open(pathh, "w") as f:
             f.write(text)
-        logging.info("ghost.toml file created at %s", path)
-        os.mkdir(f"{path}/.ghost")
-        logging.info(".ghost directory created at %s", f"{path}/.ghost")
+        Console.success(f"Created ghost.toml")
+        
+        ghost_dir = f"{path}/.ghost"
+        if not os.path.exists(ghost_dir):
+            os.mkdir(ghost_dir)
+            Console.success(f"Created .ghost/ directory")
+        
         walk_and_generate_json(path)
-        logging.info("Context JSON generated at %s", f"{path}/.ghost/context.json")
-        spinner.stop()
+        Console.success(f"Generated context.json")
+        spinner.stop(message="Ghost initialized successfully")
     except Exception as e:
-        spinner.stop()
-        logging.error("Error initializing Ghost: %s", e)
+        spinner.fail(f"Initialization failed: {e}")
         raise
-    # spinner.stop()
-    logging.info("Initialization completed.")
+    
+    Console.info("Run 'ghost watch' to start monitoring")
 
 def main():
     class CustomFormatter(logging.Formatter):
