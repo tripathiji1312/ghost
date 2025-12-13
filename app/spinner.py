@@ -2,13 +2,13 @@ import threading
 import itertools
 import time
 import sys
-
+  
 class Spinner:
     def __init__(self, message="Processing"):
         self.message = message
         self.spinner = itertools.cycle(['|', '/', '-', '\\'])
         self.running = False
-        self.thread = None
+        self.thread = None 
 
     def start(self):
         self.running = True

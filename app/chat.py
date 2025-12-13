@@ -3,6 +3,9 @@ import logging
 from groq import Groq
 from openai import OpenAI
 import re
+import tomllib
+import json
+from datetime import datetime
 
 class TestGenerator:
     def __init__(self, api_key="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"):
@@ -10,8 +13,8 @@ class TestGenerator:
             api_key=api_key,
         )
 
-    def get_test_code(self, source_code):
-        prompt = self.create_prompt(source_code)
+    def get_test_code(self, source_code, source_path='.'):
+        prompt = self.create_prompt(source_code, source_path)
         chat_completion = self.client.chat.completions.create(
             messages=[
                 {
@@ -28,19 +31,76 @@ class TestGenerator:
         cleaned_code = self.clean_llm_response(code)
         return cleaned_code
 
-    def create_prompt(self, source_code):
+    def create_prompt(self, source_code, source_path):
+        conf = tomllib.load(open("ghost.toml", "rb"))
+        framework = conf.get("tests", {}).get("framework", "pytest")
+        context_source = f"{source_path}/.ghost/context.json"
+        with open(context_source, "r") as f:
+            global_context = json.load(f)
+        now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
         return f"""
-        You are an automated QA Agent. Your job is to write a Pytest unit test for the provided Python code.
-        
-        STRICT RULES:
-        1. Output ONLY the raw Python code. 
-        2. Do NOT use Markdown backticks (```).
-        3. Do NOT add explanations or conversational text.
-        4. Must include 'import pytest'.
-        5. Mock external dependencies if necessary.
-        
-        INPUT CODE:
+        ROLE:
+        You are a deterministic, automated QA agent specialized in Python test generation.
+
+        PRIMARY OBJECTIVE:
+        Generate a COMPLETE, EXECUTABLE Python test file using the specified testing framework: {framework}.
+
+        The output must be immediately runnable without modification.
+
+        ABSOLUTE OUTPUT CONSTRAINTS (NON-NEGOTIABLE):
+        1. Output ONLY valid Python source code.
+        2. Do NOT include Markdown, backticks, explanations, annotations, or conversational text.
+        3. The output MUST be directly saveable as a .py file.
+        4. The output MUST contain an explicit import of the testing framework:
+           import {framework}
+        5. Do NOT emit placeholder code, TODOs, or pseudocode.
+        6. Do NOT modify, rewrite, or inline the source code under test.
+        7. Do NOT reference files, modules, or symbols not present in GLOBAL CONTEXT.
+        8. Tests MUST be deterministic, repeatable, and isolated.
+
+        FILE HEADER (MANDATORY):
+        The very first lines of the file MUST be a Python comment in EXACTLY this format:
+        # Generated at: {now} | Source: {source_path}
+
+        TEST CONSTRUCTION RULES:
+        - Use the idiomatic style required by {framework}.
+        - If {framework} supports fixtures, setup/teardown, or parameterization, use them where appropriate.
+        - If {framework} requires class-based tests, use them correctly.
+        - Follow naming conventions required for automatic test discovery by {framework}.
+        - Assert behavior explicitly; never rely on implicit truthiness.
+        - Validate return values, side effects, and raised exceptions.
+        - Cover:
+          • Standard / expected behavior
+          • Edge cases
+          • Error or failure paths (invalid input, exceptions)
+        - Write separate tests for each public function or class.
+
+        MOCKING & ISOLATION REQUIREMENTS:
+        - Mock ALL external dependencies, including but not limited to:
+          • File system access
+          • Network or HTTP calls
+          • Environment variables
+          • Time, randomness, UUIDs
+          • Subprocesses or OS interactions
+        - Use the most appropriate mocking mechanism compatible with {framework}
+          (e.g., monkeypatch, unittest.mock, fixtures, stubs).
+
+        IMPORT RULES:
+        - Import ONLY from:
+          • Python standard library
+          • {framework}
+          • Modules listed in GLOBAL CONTEXT
+        - Avoid wildcard imports.
+
+        GLOBAL CONTEXT (AVAILABLE MODULES / FILES):
+        {json.dumps(global_context, indent=2)}
+
+        SOURCE CODE UNDER TEST:
         {source_code}
+
+        FINAL ENFORCEMENT:
+        Return ONLY raw Python code.
+        Any additional text, formatting, or explanation makes the response invalid.
         """
 
     def clean_llm_response(self, raw_text):

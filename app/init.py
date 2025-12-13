@@ -4,7 +4,7 @@ import logging
 import ast
 import json
 import tomllib
-from spinner import Spinner
+from spinner import Spinner 
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -176,10 +176,10 @@ def ghost_init(path = os.getcwd()):
     
             [scanner]
             # The user tweaks these rules, NOT the file list itself
-            ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist"]
+            ignore_dirs = [".venv", "node_modules", ".git", "__pycache__", "dist", ".ghost", "tests"]
             ignore_files = ["setup.py"]
     
-            [tests]
+            [tests]  
             framework = "pytest"
             output_dir = "tests"'''
         with open(pathh, "w") as f:
