@@ -9,7 +9,7 @@ from watchdog.observers import Observer
 from chat import TestGenerator
 import init
 import argparse
-from spinner import Spinner
+from console import Console, GhostSpinner, SpinnerStyle, Colors, Icons, countdown
 from config import API_KEY
 from runner import *
 # Utility function to extract file name from path
@@ -79,7 +79,7 @@ def CheckPath(file: str, full_path: str = "") -> bool:
 
 # Reading File
 def check_test(file_path: str, source_path: str, file: str) -> bool:
-    spinner1 = Spinner("Checking Test...")
+    spinner1 = GhostSpinner("Running tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
     spinner1.start()
     folder_path = "/".join(str(file_path).replace("\\", "/").split("/")[:])
     folder_path = f"{folder_path}/tests"
@@ -93,62 +93,65 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
     try:
 
         if error_type == "SYNTAX" and error_type != "UNKNOWN":
-            sleep(5)
-            spinner2 = Spinner("Generating Tests...")
+            Console.warning(f"Syntax errors detected in {test_file_path}")
+            countdown(5, "Preparing to heal")
+            
+            spinner2 = GhostSpinner("Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
             spinner2.start()
-            logging.warning("Test file has syntax errors: %s", test_file_path)
             generator = TestGenerator(API_KEY)
             code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
             WriteTest(file_path, code, source_path)
-            spinner2.stop()
+            spinner2.stop(message="Test healed successfully")
         else:
-            spinner3 = Spinner("Consulting Judge...")
+            Console.judging(file)
+            spinner3 = GhostSpinner("Consulting the judge", style=SpinnerStyle.DOTS, color=Colors.YELLOW)
             spinner3.start()
-            logging.info("Test file has Logic errors: %s", test_file_path)
-            sleep(5)
-            logging.info("Consulting the Judge...")
+            countdown(5, "Analyzing code")
+            
             judge = TestGenerator(API_KEY)
             result = judge.consult_the_judge(cont, curr_path, file, test_file_path, errors)
-            spinner3.stop()
-            logging.info("Judge's Decision: %s", result)
+            spinner3.stop(message="Judge verdict received")
+            
+            Console.verdict(result == "BUG_IN_CODE")
+            
             if result == "BUG_IN_CODE":
-                sleep(5)
-                spinner4 = Spinner("Generating Tests...")
+                countdown(5, "Preparing fix")
+                spinner4 = GhostSpinner("Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
                 spinner4.start()
-                logging.warning("Source code has a defect. Fixing...")
                 generator = TestGenerator(API_KEY)
                 code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
                 WriteTest(file_path, code, source_path)
-                spinner4.stop()
+                spinner4.stop(message="Tests fixed successfully")
             elif result == "FIX_TEST":
-                print("🚨 BUG DETECTED IN SOURCE CODE!")
-                print("   The test found a discrepancy, but the AI believes the code is at fault.")
-                print("   Ghost will NOT update the test to match buggy code.")
+                Console.newline()
+                Console.error("BUG DETECTED IN SOURCE CODE!", prefix="CRITICAL")
+                Console.info("The test found a discrepancy, but the AI believes the code is at fault.")
+                Console.warning("Ghost will NOT update the test to match buggy code.")
+                Console.newline()
 
     except Exception as e:
-        print("Error consulting the judge:", e)
+        Console.error(f"Error consulting the judge: {e}")
         return False
 
     return True
 
 
 def make_tests(file_path, content, source_path="", file="") -> None:
-    print("Starting to generate test for ", file)
-    spinner = Spinner("Generating Tests....")
+    Console.generating(file)
+    spinner = GhostSpinner("Generating tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
     spinner.start()
     curr_path = str(file_path)
     flag = False
     try:
         generator = TestGenerator(API_KEY)
         code = generator.get_test_code(content, curr_path, file)
-        # code = "loream ipsum"
         WriteTest(file_path, code, source_path)
         flag = True
+        spinner.stop(message=f"Tests generated for {file}")
     except Exception as e:
-        print("Error generating tests:", e)
+        spinner.fail(message=f"Failed to generate tests: {e}")
     finally:
-        spinner.stop()
-        sleep(2)
+        countdown(2, "Cooldown")
     if not flag:
         return
     check_test(file_path, source_path, file)
@@ -168,14 +171,14 @@ def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
     test_file_path = f"{folder_path}/test_{getFileNameFromPath(source_path)}"
     with open(test_file_path, 'w') as test_file:
         test_file.write(test_code)
-    logging.info("Test file written to: %s", test_file_path)
+    Console.success(f"Test file written: {test_file_path}")
 
 # Watchdog Event Handler
 def start_watching(path_to_watch):
     # Debounce mechanism to prevent duplicate events
     last_processed = {}
     currently_processing = set()  # Track files being processed
-    DEBOUNCE_SECONDS = 5  # Ignore events for the same file within this window
+    DEBOUNCE_SECONDS = 15  # Ignore events for the same file within this window (increased for rate limiting)
     
     class MyEventHandler(FileSystemEventHandler):
         def _should_process(self, file_path):
@@ -206,7 +209,7 @@ def start_watching(path_to_watch):
             if file.endswith("~"):
                 file = file[:-1]
             if CheckPath(file, event.src_path):
-                logging.info("File created: %s", file)
+                Console.file_changed(file, "created")
 
         def on_deleted(self, event: FileSystemEvent) -> None: #When a file is deleted
             pathhh = event.src_path
@@ -216,7 +219,7 @@ def start_watching(path_to_watch):
             if file.endswith("~"):
                 file = file[:-1]
             if CheckPath(file, event.src_path):
-                logging.info("File deleted: %s", file)
+                Console.file_changed(file, "deleted")
                 init.walk_and_delete_json(path_to_watch, file)
 
         def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
@@ -228,14 +231,13 @@ def start_watching(path_to_watch):
                 if CheckPath(file, event.src_path) and self._should_process(event.src_path):
                     self._mark_processing_start(event.src_path)
                     try:
-                        logging.info("File modified: %s", file)
+                        Console.file_changed(file, "modified")
                         content = ReadFile(event.src_path)
                         # logging.info("File content:\n%s", content)
                         result = init.walk_and_modify_json(path_to_watch, event.src_path, file)
                         # Skip test generation if file has syntax errors
                         if result is not None:
-                            while True:
-                                make_tests(path_to_watch, content, event.src_path, file)
+                            make_tests(path_to_watch, content, event.src_path, file)
                     finally:
                         self._mark_processing_done(event.src_path)
 
@@ -243,8 +245,9 @@ def start_watching(path_to_watch):
     observer = Observer()
     observer.schedule(event_handler, path=path_to_watch, recursive=True)
     observer.start()
-    logging.info("Monitoring started for Path = %s.", path_to_watch)
-    logging.info("Press Ctrl+C to stop monitoring.")
+    Console.success(f"Monitoring started: {path_to_watch}")
+    Console.info("Press Ctrl+C to stop monitoring")
+    Console.newline()
     try:
         while True:
             time.sleep(1)
@@ -254,6 +257,9 @@ def start_watching(path_to_watch):
 
 def main():
     logging_setup()
+    
+    # Show beautiful banner
+    Console.banner()
 
     parser = argparse.ArgumentParser(
         description="GhostTest: AI QA Agent"
@@ -281,18 +287,21 @@ def main():
 
     if args.init:
         try:
+            Console.info(f"Initializing Ghost in {target_path}")
             init.ghost_init(target_path)
+            Console.success("Ghost initialized successfully!")
             return
         except Exception as e:
-            print(f"Error initializing Ghost: {e}")
+            Console.error(f"Error initializing Ghost: {e}")
             return
 
     ghost_file = target_path / "ghost.toml"
 
     if not ghost_file.exists():
-        print("⚠️  Warning: ghost.toml not found. Initializing with defaults.")
+        Console.warning("ghost.toml not found. Initializing with defaults...")
         init.ghost_init(target_path)
 
+    Console.section("Starting File Watcher")
     start_watching(target_path)
 
 

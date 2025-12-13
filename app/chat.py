@@ -7,10 +7,23 @@ import tomllib
 import json
 from datetime import datetime
 from runner import run_test, get_project_tree
+from rate_limiter import RateLimiter, call_with_retry
 class TestGenerator:
     def __init__(self, api_key="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"):
         self.client = Groq(
             api_key=api_key,
+        )
+
+    @call_with_retry(max_retries=5, base_delay=2.0)
+    def _call_api(self, messages, temperature=0.1, model="openai/gpt-oss-120b"):
+        """
+        Internal method to call the API with rate limiting and retry logic.
+        """
+        RateLimiter.wait()  # Enforce rate limiting
+        return self.client.chat.completions.create(
+            messages=messages,
+            temperature=temperature,
+            model=model,
         )
 
     def get_test_code(self, source_code, source_path='.', filename="", testing=False, test_file_path="", errors=None):
@@ -19,7 +32,7 @@ class TestGenerator:
         else:
             prompt = self.create_prompt(source_code, source_path, filename)
         logging.debug("Prompt generated!")
-        chat_completion = self.client.chat.completions.create(
+        chat_completion = self._call_api(
             messages=[
                 {
                     "role": "system", 
@@ -246,7 +259,7 @@ class TestGenerator:
         
         OUTPUT: OUTPUT ONLY ONE OF THESE TWO STRINGS. NO EXPLANATION.
         """
-        chat_completion = self.client.chat.completions.create(
+        chat_completion = self._call_api(
             messages=[
                 {
                     "role": "system",
