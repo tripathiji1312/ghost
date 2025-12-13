@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/ghosttest.svg)](https://pypi.org/project/ghosttest/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/ghosttest.svg)](https://pypi.org/project/ghosttest/)
-[![License](https://img.shields.io/github/license/ghost-team/ghost.svg)](LICENSE)
+[![License](https://img.shields.io/github/license/tripathiji1312/ghost.svg)](LICENSE)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 <p align="center">
