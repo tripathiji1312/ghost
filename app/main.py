@@ -11,7 +11,7 @@ import init
 import argparse
 from spinner import Spinner
 from config import API_KEY
-
+from runner import *
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
     # Extracts the file name from a given path
@@ -78,22 +78,81 @@ def CheckPath(file: str, full_path: str = "") -> bool:
     return True
 
 # Reading File
+def check_test(file_path: str, source_path: str, file: str) -> bool:
+    spinner1 = Spinner("Checking Test...")
+    spinner1.start()
+    folder_path = "/".join(str(file_path).replace("\\", "/").split("/")[:])
+    folder_path = f"{folder_path}/tests"
+    test_file_path = f"{folder_path}/test_{getFileNameFromPath(source_path)}"
+    cont = ReadFile(test_file_path)
+    return_code, stdout, stderr = run_test(test_file_path)
+    errors = {"return_code": return_code, "stderr": stderr, "stdout": stdout}
+    error_type = classify_error(stderr, stdout)
+    curr_path = str(file_path)
+    spinner1.stop()
+    try:
+
+        if error_type == "SYNTAX" and error_type != "UNKNOWN":
+            sleep(5)
+            spinner2 = Spinner("Generating Tests...")
+            spinner2.start()
+            logging.warning("Test file has syntax errors: %s", test_file_path)
+            generator = TestGenerator(API_KEY)
+            code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
+            WriteTest(file_path, code, source_path)
+            spinner2.stop()
+        else:
+            spinner3 = Spinner("Consulting Judge...")
+            spinner3.start()
+            logging.info("Test file has Logic errors: %s", test_file_path)
+            sleep(5)
+            logging.info("Consulting the Judge...")
+            judge = TestGenerator(API_KEY)
+            result = judge.consult_the_judge(cont, curr_path, file, test_file_path, errors)
+            spinner3.stop()
+            logging.info("Judge's Decision: %s", result)
+            if result == "BUG_IN_CODE":
+                sleep(5)
+                spinner4 = Spinner("Generating Tests...")
+                spinner4.start()
+                logging.warning("Source code has a defect. Fixing...")
+                generator = TestGenerator(API_KEY)
+                code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
+                WriteTest(file_path, code, source_path)
+                spinner4.stop()
+            elif result == "FIX_TEST":
+                print("🚨 BUG DETECTED IN SOURCE CODE!")
+                print("   The test found a discrepancy, but the AI believes the code is at fault.")
+                print("   Ghost will NOT update the test to match buggy code.")
+
+    except Exception as e:
+        print("Error consulting the judge:", e)
+        return False
+
+    return True
+
+
 def make_tests(file_path, content, source_path="", file="") -> None:
     print("Starting to generate test for ", file)
     spinner = Spinner("Generating Tests....")
     spinner.start()
     curr_path = str(file_path)
+    flag = False
     try:
         generator = TestGenerator(API_KEY)
         code = generator.get_test_code(content, curr_path, file)
         # code = "loream ipsum"
         WriteTest(file_path, code, source_path)
+        flag = True
     except Exception as e:
         print("Error generating tests:", e)
     finally:
         spinner.stop()
         sleep(2)
-# Read File
+    if not flag:
+        return
+    check_test(file_path, source_path, file)
+
 def ReadFile(file_path: str) -> str:
     with open(file_path, 'r') as file:
         content = file.read()
@@ -175,7 +234,8 @@ def start_watching(path_to_watch):
                         result = init.walk_and_modify_json(path_to_watch, event.src_path, file)
                         # Skip test generation if file has syntax errors
                         if result is not None:
-                            make_tests(path_to_watch, content, event.src_path, file)
+                            while True:
+                                make_tests(path_to_watch, content, event.src_path, file)
                     finally:
                         self._mark_processing_done(event.src_path)
 

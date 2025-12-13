@@ -39,6 +39,29 @@ def get_project_tree(root_path, ignore_dirs=None):
                 tree_str += f"{subindent}{f}\n"
 
     return tree_str
+
+
+def classify_error(stderr, stdout):
+    full_log = stderr + stdout
+
+    # 1. The Janitor Cases (Safe to Auto-Fix)
+    if "ModuleNotFoundError" in full_log:
+        return "SYNTAX"
+    if "ImportError" in full_log:
+        return "SYNTAX"
+    if "IndentationError" in full_log:
+        return "SYNTAX"
+    if "AttributeError" in full_log:
+        # Often means the AI halluncinated a method name
+        return "SYNTAX"
+    # 2. The Judge Cases (Dangerous)
+    if "AssertionError" in full_log:
+        return "LOGIC"
+
+    return "UNKNOWN"  # Treat as Syntax for now
+
+
+
 def main():
     return_code, stdout, stderr = run_test("app/test_testing.py")
     print(f"Return Code: {return_code}")
