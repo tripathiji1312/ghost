@@ -1,6 +1,6 @@
 [project]
 name = "ghosttest"
-version = "0.2.0"
+version = "0.2.0.1"
 description = "Ghost - AI-Powered Test Generation & Healing for Python"
 readme = "README.md"
 license = {text = "MIT"}
