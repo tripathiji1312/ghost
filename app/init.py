@@ -135,9 +135,16 @@ def walk_and_modify_json(base_dir, file_path, file):
     if file not in ignore_files:
         if file.endswith(".py"):
             # file_path = os.path.join(root, file)
-            functions, classes = analyze_file(file_path)
+            analysis_result = analyze_file(file_path)
+            
+            # Skip if file has syntax errors
+            if analysis_result is None:
+                logging.warning("Skipping file with syntax errors: %s", file)
+                return None
+            
+            functions, classes = analysis_result
 
-            if functions:
+            if functions or classes:
 
                 # Build readable summary string
                 func_part = "Functions: " + ", ".join(functions) if functions else "Functions: None"

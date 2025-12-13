@@ -6,15 +6,15 @@ import re
 import tomllib
 import json
 from datetime import datetime
-
+from runner import run_test, get_project_tree
 class TestGenerator:
     def __init__(self, api_key="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"):
         self.client = Groq(
             api_key=api_key,
         )
 
-    def get_test_code(self, source_code, source_path='.'):
-        prompt = self.create_prompt(source_code, source_path)
+    def get_test_code(self, source_code, source_path='.', filename=""):
+        prompt = self.create_prompt(source_code, source_path, filename)
         chat_completion = self.client.chat.completions.create(
             messages=[
                 {
@@ -31,20 +31,26 @@ class TestGenerator:
         cleaned_code = self.clean_llm_response(code)
         return cleaned_code
 
-    def create_prompt(self, source_code, source_path):
+    def create_prompt(self, source_code, source_path, filename):
         conf = tomllib.load(open("ghost.toml", "rb"))
         framework = conf.get("tests", {}).get("framework", "pytest")
         context_source = f"{source_path}/.ghost/context.json"
         with open(context_source, "r") as f:
             global_context = json.load(f)
         now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        project_structure = get_project_tree(source_path)
         return f"""
         ROLE:
         You are a deterministic, automated QA agent specialized in Python test generation.
-
+        This code you generate will reside in the {source_path}/tests/test_{filename}.
+        THis is from the source file {filename}.
         PRIMARY OBJECTIVE:
         Generate a COMPLETE, EXECUTABLE Python test file using the specified testing framework: {framework}.
-
+        CONTEXT:
+            - You are working in a specific project structure.
+            - You must verify imports based on the PROJECT MAP provided.
+            
+            {project_structure}
         The output must be immediately runnable without modification.
 
         ABSOLUTE OUTPUT CONSTRAINTS (NON-NEGOTIABLE):

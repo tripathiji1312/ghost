@@ -3,7 +3,6 @@ import time
 import logging
 from time import sleep
 from pathlib import Path
-
 from openai import api_key
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -12,6 +11,7 @@ import init
 import argparse
 from spinner import Spinner
 from config import API_KEY
+
 # Utility function to extract file name from path
 def getFileNameFromPath(path: str) -> str:
     # Extracts the file name from a given path
@@ -82,10 +82,11 @@ def make_tests(file_path, content, source_path="", file="") -> None:
     print("Starting to generate test for ", file)
     spinner = Spinner("Generating Tests....")
     spinner.start()
-    curr_path = os.getcwd()
+    curr_path = str(file_path)
     try:
         generator = TestGenerator(API_KEY)
-        code = generator.get_test_code(content, curr_path)
+        code = generator.get_test_code(content, curr_path, file)
+        # code = "loream ipsum"
         WriteTest(file_path, code, source_path)
     except Exception as e:
         print("Error generating tests:", e)
@@ -171,8 +172,10 @@ def start_watching(path_to_watch):
                         logging.info("File modified: %s", file)
                         content = ReadFile(event.src_path)
                         # logging.info("File content:\n%s", content)
-                        init.walk_and_modify_json(path_to_watch, event.src_path, file)
-                        make_tests(path_to_watch, content, event.src_path, file)
+                        result = init.walk_and_modify_json(path_to_watch, event.src_path, file)
+                        # Skip test generation if file has syntax errors
+                        if result is not None:
+                            make_tests(path_to_watch, content, event.src_path, file)
                     finally:
                         self._mark_processing_done(event.src_path)
 
