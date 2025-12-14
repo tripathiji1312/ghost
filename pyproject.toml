@@ -1,6 +1,6 @@
 [project]
 name = "ghosttest"
-version = "0.2.0.1"
+version = "0.2.2.0"
 description = "Ghost - An autonomous local-first AI Agent that generates, runs, and self-heals Python unit tests in real-time. Supports Ollama, Groq, and many frameworks such as pytest."
 readme = "PYPI_README.md"
 license = {text = "MIT"}
