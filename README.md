@@ -2,8 +2,6 @@
 
 <img src="logo.png" alt="Ghost AI Test Agent Logo" width="200" />
 
-# Ghost
-
 **Autonomous Test Generation & Self-Healing Agent for Python**
 
 [![PyPI version](https://img.shields.io/pypi/v/ghosttest?color=blue&label=pypi%20package&logo=pypi&logoColor=white)](https://pypi.org/project/ghosttest/)
