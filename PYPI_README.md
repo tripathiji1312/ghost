@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Ghost is a local-first autonomous agent designed to automate the unit testing lifecycle for Python applications. Functioning as a background daemon, it monitors filesystem events, generates context-aware `pytest` suites, and autonomously resolves execution errors through a continuous feedback loop.
+Ghost is a local-first autonomous agent designed to automate the unit testing lifecycle for Python applications. Functioning as a background daemon, it monitors filesystem events, generates context-aware `pytest`(or any other framework) suites, and autonomously resolves execution errors through a continuous feedback loop.
 
 It is engineered for privacy and latency, supporting **Ollama** and **LM Studio** for fully local execution, alongside **Groq**, **OpenAI**, and **Anthropic** for cloud-based inference.
 

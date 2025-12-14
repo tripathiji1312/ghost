@@ -1,27 +1,37 @@
 [project]
 name = "ghosttest"
-version = "0.2.2.0"
-description = "Ghost - An autonomous local-first AI Agent that generates, runs, and self-heals Python unit tests in real-time. Supports Ollama, Groq, and many frameworks such as pytest."
+version = "0.2.2.1"
+description = "An autonomous local-first AI agent that generates, executes, and self-heals Python unit tests in real-time."
 readme = "PYPI_README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {name = "Swarnim Tripathi"}
 ]
-keywords = ["testing", "ai", "test-generation", "pytest", "automation", "llm"]
+keywords = [
+    "testing",
+    "pytest",
+    "ai-agent",
+    "test-automation",
+    "llm",
+    "ollama",
+    "groq",
+    "self-healing",
+    "qa",
+    "developer-tools"
+]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Testing",
     "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Framework :: Pytest",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
 ]
 
 dependencies = [

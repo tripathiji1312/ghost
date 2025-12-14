@@ -17,7 +17,7 @@
 
 Ghost is a **local-first AI Agent** designed to automate the unit testing lifecycle for Python applications. It functions as a background daemon that monitors file system events in real-time.
 
-Unlike standard code generators, Ghost employs a **continuous feedback loop**. When source code changes, Ghost analyzes the Abstract Syntax Tree (AST), generates context-aware `pytest` suites, executes them in a secure subprocess, and autonomously patches the tests if they fail due to syntax or import errors.
+Unlike standard code generators, Ghost employs a **continuous feedback loop**. When source code changes, Ghost analyzes the Abstract Syntax Tree (AST), generates context-aware `pytest`(or any other framework) suites, executes them in a secure subprocess, and autonomously patches the tests if they fail due to syntax or import errors.
 
 It is designed for privacy and speed, with native support for **Ollama** (local LLMs), **Groq** (low-latency inference), OpenAI, and Anthropic.
 
