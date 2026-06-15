@@ -187,14 +187,15 @@ def ReadFile(file_path: str) -> None:
 
 # Write Test File
 def WriteTest(file_path: str, test_code: str, source_path: str) -> str | None:
-    folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
-    folder_path = f"{folder_path}/tests"
-    if os.path.exists(folder_path) == False:
-        os.makedirs(folder_path)
-
-    test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
-    with open(test_file_path, 'w') as test_file:
-        test_file.write(test_code)
+    from pathlib import Path
+    from write_policy import WriteGuard
+    from config import get_config
+    config = get_config(Path(source_path) if source_path else None)
+    output_dir = config.tests.output_dir
+    guard = WriteGuard(Path(source_path) / output_dir)
+    project_root = Path(source_path)
+    test_file_path = project_root / output_dir / f"test_{getFileNameFromPath(file_path)}"
+    guard.write_text(test_file_path, test_code)
     Console.success(f"Test file written: {test_file_path}")
 
 # Watchdog Event Handler
