@@ -27,6 +27,7 @@ from .cli import main
 from .config import GhostConfig, get_config
 from .providers import get_provider, list_available_providers
 from .console import Console, GhostSpinner
+from .write_policy import WriteGuard, WritePolicyError
 
 __all__ = [
     "main",
@@ -36,5 +37,7 @@ __all__ = [
     "list_available_providers",
     "Console",
     "GhostSpinner",
+    "WriteGuard",
+    "WritePolicyError",
     "__version__",
 ]

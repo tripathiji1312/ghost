@@ -4,7 +4,9 @@ import logging
 import ast
 import json
 import tomllib
+from pathlib import Path
 from console import Console, GhostSpinner, SpinnerStyle, Colors 
+from write_policy import WriteGuard
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -58,6 +60,7 @@ def analyze_file(path):
 
 # GENERATION
 def walk_and_generate_json(base_dir):
+    guard = WriteGuard(Path(base_dir) / ".ghost")
     result = {}
     conf = get_toml(base_dir)
     ignore_dirs = conf.get("scanner", {}).get("ignore_dirs", [])
@@ -74,7 +77,6 @@ def walk_and_generate_json(base_dir):
                 if functions is None:
                     continue
 
-                # Build readable summary string
                 func_part = "Functions: " + ", ".join(functions) if functions else "Functions: None"
 
                 class_parts = []
@@ -86,10 +88,7 @@ def walk_and_generate_json(base_dir):
 
                 result[file] = f"{func_part}; {class_part}"
 
-    # Save JSON
-    output_json = f"{base_dir}/.ghost/context.json"
-    with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4)
+    guard.write_text(Path(base_dir) / ".ghost" / "context.json", json.dumps(result, indent=4))
 
     return result
 
@@ -98,9 +97,9 @@ import os
 import json
 
 def walk_and_delete_json(base_dir, filename):
+    guard = WriteGuard(Path(base_dir) / ".ghost")
     output_json = os.path.join(base_dir, ".ghost", "context.json")
 
-    # If JSON doesn't exist, nothing to delete
     if not os.path.exists(output_json):
         return False
 
@@ -108,45 +107,36 @@ def walk_and_delete_json(base_dir, filename):
         with open(output_json, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, IOError):
-        # JSON invalid or unreadable
         return False
 
-    # If file not in JSON, nothing to delete
     if filename not in data:
         return False
 
-    # Delete the key
     del data[filename]
 
-    # Write updated JSON
-    with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+    guard.write_text(Path(output_json), json.dumps(data, indent=4))
 
     return True
 
 
 # MODIFICATION
 def walk_and_modify_json(base_dir, file_path, file):
+    guard = WriteGuard(Path(base_dir) / ".ghost")
     conf = get_toml(base_dir)
     result = {}
     ignore_files = conf.get("scanner", {}).get("ignore_files", [])
-    # file = os.path.basename(base_dir)
     root = os.path.dirname(base_dir)
     if file not in ignore_files:
         if file.endswith(".py"):
-            # file_path = os.path.join(root, file)
             analysis_result = analyze_file(file_path)
-            
-            # Skip if file has syntax errors
+
             if analysis_result is None:
                 logging.warning("Skipping file with syntax errors: %s", file)
                 return None
-            
+
             functions, classes = analysis_result
 
             if functions or classes:
-
-                # Build readable summary string
                 func_part = "Functions: " + ", ".join(functions) if functions else "Functions: None"
 
                 class_parts = []
@@ -160,10 +150,10 @@ def walk_and_modify_json(base_dir, file_path, file):
     output_json = f"{base_dir}/.ghost/context.json"
     with open(output_json, "r", encoding="utf-8") as f:
         data = json.load(f)
-    data[file] = result[file]
+    if file in result:
+        data[file] = result[file]
     walk_and_delete_json(base_dir, file)
-    with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+    guard.write_text(Path(output_json), json.dumps(data, indent=4))
 
     return result
 
@@ -172,7 +162,11 @@ def ghost_init(path = os.getcwd()):
     spinner = GhostSpinner("Initializing Ghost", style=SpinnerStyle.DOTS, color=Colors.MAGENTA)
     spinner.start()
     try:
-        pathh = f"{path}/ghost.toml"
+        project_root = Path(path)
+        guard = WriteGuard(project_root, allow_project_root_files=True, project_root=project_root)
+        ghost_guard = WriteGuard(project_root / ".ghost")
+
+        pathh = project_root / "ghost.toml"
         text = '''[project]
 name = "my-app"
 language = "python"
@@ -197,22 +191,21 @@ max_heal_attempts = 3
 [watcher]
 debounce_seconds = 15
 '''
-        with open(pathh, "w") as f:
-            f.write(text)
+        guard.write_text(pathh, text)
         Console.success(f"Created ghost.toml")
-        
-        ghost_dir = f"{path}/.ghost"
-        if not os.path.exists(ghost_dir):
-            os.mkdir(ghost_dir)
+
+        ghost_dir = project_root / ".ghost"
+        if not ghost_dir.exists():
+            ghost_guard.mkdir(ghost_dir)
             Console.success(f"Created .ghost/ directory")
-        
+
         walk_and_generate_json(path)
         Console.success(f"Generated context.json")
         spinner.stop(message="Ghost initialized successfully")
     except Exception as e:
         spinner.fail(f"Initialization failed: {e}")
         raise
-    
+
     Console.info("Run 'ghost watch' to start monitoring")
 
 def main():

@@ -160,30 +160,15 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
     """
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler, FileSystemEvent
+    from write_policy import WriteGuard
+    from config import get_config
 
-    # Debounce state per daemon instance
-    last_processed: dict = {}
-    currently_processing: set = set()
-    DEBOUNCE_SECONDS = 15
+    config = get_config(project_root)
+    output_dir = config.tests.output_dir
+    guard = WriteGuard(project_root / output_dir)
 
     class DaemonEventHandler(FileSystemEventHandler):
         """Watchdog event handler that logs all activity and triggers test gen."""
-
-        def _should_process(self, file_path: str) -> bool:
-            if file_path in currently_processing:
-                return False
-            current_time = time.time()
-            if file_path in last_processed:
-                if current_time - last_processed[file_path] < DEBOUNCE_SECONDS:
-                    return False
-            return True
-
-        def _mark_start(self, file_path: str) -> None:
-            currently_processing.add(file_path)
-
-        def _mark_done(self, file_path: str) -> None:
-            currently_processing.discard(file_path)
-            last_processed[file_path] = time.time()
 
         def _get_file(self, event: FileSystemEvent) -> Optional[str]:
             path = str(event.src_path)
@@ -211,56 +196,41 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
             file_path = self._get_file(event)
             if not file_path or not self._check_path(file_path):
                 return
-            if not self._should_process(file_path):
+
+            file_name = file_path.split("/")[-1]
+            logger.info(f"File modified: {file_name}")
+
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+            except (FileNotFoundError, PermissionError, OSError) as e:
+                logger.warning(f"Cannot read file {file_path}: {e}")
                 return
 
-            self._mark_start(file_path)
             try:
-                file_name = file_path.split("/")[-1]
-                logger.info(f"File modified: {file_name}")
+                import init as ghost_init_module
 
-                # Read source content
-                try:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
-                except (FileNotFoundError, PermissionError, OSError) as e:
-                    logger.warning(f"Cannot read file {file_path}: {e}")
+                result = ghost_init_module.walk_and_modify_json(
+                    str(project_root), file_path, file_name
+                )
+                if result is None:
+                    logger.warning(f"Skipping {file_name}: syntax errors")
                     return
+            except Exception as e:
+                logger.error(f"Failed to update context for {file_name}: {e}")
+                return
 
-                # Update project context JSON
-                try:
-                    import init as ghost_init_module
+            try:
+                from chat import TestGenerator
 
-                    result = ghost_init_module.walk_and_modify_json(
-                        str(project_root), file_path, file_name
-                    )
-                    if result is None:
-                        logger.warning(f"Skipping {file_name}: syntax errors")
-                        return
-                except Exception as e:
-                    logger.error(f"Failed to update context for {file_name}: {e}")
-                    return
+                generator = TestGenerator(config=config)
+                code = generator.get_test_code(content, str(project_root), file_name)
 
-                # Generate tests
-                try:
-                    from chat import TestGenerator
-                    from config import get_config
-
-                    config = get_config(project_root)
-                    generator = TestGenerator(config=config)
-                    code = generator.get_test_code(content, str(project_root), file_name)
-
-                    # Write test file
-                    tests_dir = project_root / "tests"
-                    tests_dir.mkdir(exist_ok=True)
-                    test_path = tests_dir / f"test_{file_name}"
-                    test_path.write_text(code)
-                    logger.info(f"Tests generated: test_{file_name}")
-                except Exception as e:
-                    logger.error(f"Test generation failed for {file_name}: {e}")
-
-            finally:
-                self._mark_done(file_path)
+                test_path = project_root / output_dir / f"test_{file_name}"
+                guard.write_text(test_path, code)
+                logger.info(f"Tests generated: test_{file_name}")
+            except Exception as e:
+                logger.error(f"Test generation failed for {file_name}: {e}")
 
         def on_created(self, event: FileSystemEvent) -> None:
             file_path = self._get_file(event)
