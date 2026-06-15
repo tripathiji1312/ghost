@@ -199,41 +199,32 @@ def WriteTest(file_path: str, test_code: str, source_path: str) -> str | None:
 
 # Watchdog Event Handler
 def start_watching(path_to_watch):
-    # Load .env from the project directory
     from pathlib import Path
     from dotenv import load_dotenv
+    from job_queue import JobQueue
+    from config import get_config
     project_path = Path(path_to_watch).resolve()
     env_file = project_path / ".env"
     if env_file.exists():
         load_dotenv(env_file, override=True)
-    
-    # Debounce mechanism to prevent duplicate events
-    last_processed = {}
-    currently_processing = set()  # Track files being processed
-    DEBOUNCE_SECONDS = 15  # Ignore events for the same file within this window (increased for rate limiting)
-    
+
+    config = get_config(project_path)
+    queue = JobQueue(
+        debounce_seconds=config.watcher.debounce_seconds,
+        max_workers=1,
+    )
+    queue.start()
+
     class MyEventHandler(FileSystemEventHandler):
-        def _should_process(self, file_path):
-            """Check if we should process this file (debouncing)."""
-            # Skip if file is currently being processed
-            if file_path in currently_processing:
-                return False
-            current_time = time.time()
-            if file_path in last_processed:
-                if current_time - last_processed[file_path] < DEBOUNCE_SECONDS:
-                    return False
-            return True
-        
-        def _mark_processing_start(self, file_path):
-            """Mark file as being processed."""
-            currently_processing.add(file_path)
-        
-        def _mark_processing_done(self, file_path):
-            """Mark file processing as complete and update timestamp."""
-            currently_processing.discard(file_path)
-            last_processed[file_path] = time.time()
-        
-        def on_created(self, event: FileSystemEvent) -> None: #When a file is created
+        def _process_file(self, file_path: str) -> None:
+            file = getFileNameFromPath(file_path)
+            Console.file_changed(file, "modified")
+            content = ReadFile(file_path)
+            result = ghost_init_module.walk_and_modify_json(path_to_watch, file_path, file)
+            if result is not None:
+                make_tests(file_path, content, str(path_to_watch), file)
+
+        def on_created(self, event: FileSystemEvent) -> None:
             pathhh = str(event.src_path)
             if pathhh.endswith("~"):
                 event.src_path = pathhh[:-1]
@@ -243,7 +234,7 @@ def start_watching(path_to_watch):
             if CheckPath(file, str(event.src_path)):
                 Console.file_changed(file, "created")
 
-        def on_deleted(self, event: FileSystemEvent) -> None: #When a file is deleted
+        def on_deleted(self, event: FileSystemEvent) -> None:
             pathhh = str(event.src_path)
             if pathhh.endswith("~"):
                 event.src_path = pathhh[:-1]
@@ -254,27 +245,14 @@ def start_watching(path_to_watch):
                 Console.file_changed(file, "deleted")
                 ghost_init_module.walk_and_delete_json(path_to_watch, file)
 
-        def on_modified(self, event: FileSystemEvent) -> None: #When a file is modified
+        def on_modified(self, event: FileSystemEvent) -> None:
             pathhh = str(event.src_path)
             if "__pycache__" in pathhh or pathhh.endswith(".pyc"):
                 return
             if not pathhh.endswith("~"):
-
                 file = getFileNameFromPath(str(event.src_path))
-                # file_bad = getFileNameFromPath(pathhh)
-                if CheckPath(file, str(event.src_path)) and self._should_process(str(event.src_path)):
-                    self._mark_processing_start(str(event.src_path))
-                    try:
-                        Console.file_changed(file, "modified")
-                        content = ReadFile(str(event.src_path))
-                        # logging.info("File content:\n%s", content)
-                        result = ghost_init_module.walk_and_modify_json(path_to_watch, str(event.src_path), file)
-                        # Skip test generation if file has syntax errors
-                        if result is not None:
-                            # Pass: file_path (the modified file), content, source_path (project root), filename
-                            make_tests(str(event.src_path), content, str(path_to_watch), file)
-                    finally:
-                        self._mark_processing_done(str(event.src_path))
+                if CheckPath(file, str(event.src_path)):
+                    queue.submit(str(event.src_path), self._process_file)
 
     event_handler = MyEventHandler()
     observer = Observer()
@@ -287,6 +265,7 @@ def start_watching(path_to_watch):
         while True:
             time.sleep(1)
     finally:
+        queue.stop()
         observer.stop()
         observer.join()
 
