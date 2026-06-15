@@ -3,7 +3,11 @@ Ghost CLI - The main entry point for the Ghost test generator.
 
 Usage:
     ghost init [PATH]           Initialize Ghost in a directory
-    ghost watch [PATH]          Watch for file changes and generate tests
+    ghost start [PATH]          Start file watcher (background daemon or foreground)
+    ghost stop [PATH]           Stop the background daemon
+    ghost status [PATH]         Show daemon status
+    ghost logs [PATH]           View daemon logs
+    ghost watch [PATH]          Watch for file changes and generate tests (foreground)
     ghost generate <FILE>       Generate tests for a specific file
     ghost config                Configure Ghost settings
     ghost providers             List available AI providers
@@ -13,6 +17,8 @@ Usage:
 import os
 import sys
 import time
+import signal
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -97,8 +103,15 @@ def cli(ctx, version):
     \b
     Quick Start:
       $ ghost init              # Initialize in current directory
-      $ ghost watch             # Start watching for changes
+      $ ghost start             # Start watching (background daemon)
       $ ghost generate app.py   # Generate tests for a file
+    
+    \b
+    Daemon Management:
+      $ ghost start             # Start background daemon
+      $ ghost stop              # Stop background daemon
+      $ ghost status            # Show daemon status
+      $ ghost logs              # View daemon logs
     
     \b
     Configuration:
@@ -428,6 +441,322 @@ def watch(path: str, verbose: bool):
     except Exception as e:
         Console.error(f"Watcher error: {e}")
         raise SystemExit(1)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DAEMON MANAGEMENT COMMANDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _daemon_pid_file(project_root: Path) -> Path:
+    """Get the PID file path for a project."""
+    return project_root / GHOST_DIR / "pid"
+
+
+def _daemon_log_file(project_root: Path) -> Path:
+    """Get the log file path for a project."""
+    return project_root / GHOST_DIR / "logs" / "ghost.log"
+
+
+def _check_daemon(project_root: Path) -> Optional[int]:
+    """Check if a daemon is running for the given project.
+
+    Returns:
+        PID if running, None otherwise.
+    """
+    from daemon import check_pid
+    return check_pid(_daemon_pid_file(project_root))
+
+
+@cli.command()
+@click.argument('path', type=click.Path(), default='.')
+@click.option('--detach/--foreground', 'detach', default=True,
+              help='Run in background (default: detach)')
+def start(path: str, detach: bool):
+    """
+    Start the Ghost file watcher.
+
+    Runs the file watcher either in the foreground or as a background daemon.
+
+    \b
+    Examples:
+      ghost start                  # Start in background (daemon)
+      ghost start --detach         # Start in background (explicit)
+      ghost start --foreground     # Start in foreground
+      ghost start ./src            # Start in a specific directory
+    """
+    Console.mini_banner()
+
+    target_path = Path(path).resolve()
+
+    # Check for ghost.toml
+    ghost_file = target_path / GHOST_CONFIG_FILE
+    if not ghost_file.exists():
+        Console.warning("ghost.toml not found. Running 'ghost init' first...")
+        Console.newline()
+        ctx = click.get_current_context()
+        ctx.invoke(init, path=str(target_path))
+
+    pid_file = _daemon_pid_file(target_path)
+
+    if detach:
+        # ── Background daemon mode ───────────────────────────────────────
+
+        # Check if already running
+        existing_pid = _check_daemon(target_path)
+        if existing_pid is not None:
+            Console.warning(f"Daemon already running (PID: {existing_pid})")
+            Console.info(f"Use 'ghost stop' to stop it first, or 'ghost logs' to view output")
+            return
+
+        Console.info(f"Starting daemon for {target_path.name}...")
+
+        # Launch daemon as a detached subprocess
+        # start_new_session=True calls setsid(), detaching from terminal
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "ghost.daemon", str(target_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=str(target_path),
+        )
+
+        # Give it a moment to bootstrap (write PID, start observer)
+        time.sleep(0.5)
+
+        # Check if it started successfully
+        if proc.poll() is not None:
+            Console.error("Daemon failed to start")
+            # Check log for details
+            log_file = _daemon_log_file(target_path)
+            if log_file.exists():
+                last_lines = log_file.read_text().splitlines()[-5:]
+                for line in last_lines:
+                    Console.print(f"  {Colors.DIM}{line}{Colors.RESET}")
+            raise SystemExit(1)
+
+        # Write PID file (Popen launched the child; the daemon also writes it,
+        # but we write it here too so there's no race window)
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text(str(proc.pid))
+
+        Console.success(f"Daemon started (PID: {proc.pid})")
+        Console.info(f"Logs: {_daemon_log_file(target_path)}")
+        Console.info("Use 'ghost status' to check daemon health")
+        Console.info("Use 'ghost stop' to stop the daemon")
+
+    else:
+        # ── Foreground mode ──────────────────────────────────────────────
+        Console.section("Starting File Watcher (Foreground)")
+
+        try:
+            import main as ghost_main
+
+            ghost_main.logging_setup()
+            ghost_main.start_watching(target_path)
+        except KeyboardInterrupt:
+            Console.newline()
+            Console.info("Stopping watcher...")
+            Console.success("Ghost stopped. Goodbye! 👻")
+        except Exception as e:
+            Console.error(f"Watcher error: {e}")
+            raise SystemExit(1)
+
+
+@cli.command()
+@click.argument('path', type=click.Path(), default='.')
+def stop(path: str):
+    """
+    Stop the Ghost daemon for a project.
+
+    Sends SIGTERM for graceful shutdown, then SIGKILL if it doesn't stop.
+
+    \b
+    Examples:
+      ghost stop              # Stop daemon for current project
+      ghost stop ./src        # Stop daemon for specific project
+    """
+    Console.mini_banner()
+
+    target_path = Path(path).resolve()
+    pid = _check_daemon(target_path)
+
+    if pid is None:
+        Console.warning("Daemon is not running")
+        return
+
+    Console.info(f"Stopping daemon (PID: {pid})...")
+
+    # Send SIGTERM for graceful shutdown
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as e:
+        Console.error(f"Failed to signal daemon: {e}")
+        # Clean up stale PID file anyway
+        _daemon_pid_file(target_path).unlink(missing_ok=True)
+        return
+
+    # Wait for graceful shutdown (up to 10 seconds)
+    with GhostSpinner("Waiting for daemon to stop", style=SpinnerStyle.DOTS, color=Colors.YELLOW) as spinner:
+        for i in range(20):  # 20 × 0.5s = 10s timeout
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                spinner.stop(message="Daemon stopped gracefully")
+                return
+
+        # Force kill if grace period expired
+        Console.warning("Grace period expired, force killing...")
+        try:
+            os.kill(pid, signal.SIGKILL)
+            time.sleep(0.5)
+            Console.success("Daemon terminated")
+        except OSError as e:
+            Console.error(f"Failed to force kill: {e}")
+
+    # Clean up PID file
+    _daemon_pid_file(target_path).unlink(missing_ok=True)
+
+
+@cli.command()
+@click.argument('path', type=click.Path(), default='.')
+def status(path: str):
+    """
+    Show the daemon status for a project.
+
+    Reports whether the daemon is running, its PID, and recent log entries.
+
+    \b
+    Examples:
+      ghost status            # Show status for current project
+      ghost status ./src      # Show status for specific project
+    """
+    Console.mini_banner()
+
+    target_path = Path(path).resolve()
+    pid = _check_daemon(target_path)
+    log_file = _daemon_log_file(target_path)
+    pid_file = _daemon_pid_file(target_path)
+
+    Console.section("Daemon Status")
+
+    if pid is not None:
+        Console.success(f"Running (PID: {pid})", prefix="")
+        Console.info(f"PID file: {pid_file}")
+        Console.info(f"Log file: {log_file}")
+    else:
+        Console.warning("Not running", prefix="")
+
+    # Show recent log entries
+    if log_file.exists():
+        Console.newline()
+        Console.print(f"  {Colors.BOLD}Recent log entries:{Colors.RESET}")
+        Console.print(f"  {Colors.DIM}{'─' * 50}{Colors.RESET}")
+
+        try:
+            lines = log_file.read_text().splitlines()
+            # Show last 10 lines
+            for line in lines[-10:]:
+                Console.print(f"  {Colors.DIM}{line}{Colors.RESET}")
+        except OSError as e:
+            Console.warning(f"Cannot read log file: {e}")
+
+    Console.newline()
+
+    if pid is not None:
+        Console.info("Commands:")
+        Console.print(f"  {Colors.CYAN}ghost stop{Colors.RESET}    Stop the daemon")
+        Console.print(f"  {Colors.CYAN}ghost logs -f{Colors.RESET}  Follow log output")
+    else:
+        Console.info("Run 'ghost start' to start the daemon")
+
+
+@cli.command()
+@click.argument('path', type=click.Path(), default='.')
+@click.option('--follow', '-f', is_flag=True, help='Follow log output in real-time')
+@click.option('--lines', '-n', type=int, default=20, help='Number of lines to show (default: 20)')
+def logs(path: str, follow: bool, lines: int):
+    """
+    View the daemon log file.
+
+    Displays recent log entries or follows the log in real-time (like tail -f).
+
+    \b
+    Examples:
+      ghost logs               # Show last 20 log lines
+      ghost logs -n 50         # Show last 50 lines
+      ghost logs --follow      # Tail the log in real-time
+      ghost logs -f            # Short form of --follow
+    """
+    Console.mini_banner()
+
+    target_path = Path(path).resolve()
+    log_file = _daemon_log_file(target_path)
+
+    if not log_file.exists():
+        # Check if there's a project root with ghost.toml
+        project_root = _find_project_root(target_path)
+        if project_root:
+            log_file = _daemon_log_file(project_root)
+            if not log_file.exists():
+                Console.warning("No log file found. Is the daemon running?")
+                Console.info("Run 'ghost start' to start the daemon")
+                return
+        else:
+            Console.warning("No Ghost project found. Run 'ghost init' first.")
+            return
+
+    if follow:
+        # ── Tail mode (like tail -f) ─────────────────────────────────────
+        Console.info(f"Following log file: {log_file}")
+        Console.info("Press Ctrl+C to stop")
+        Console.newline()
+
+        try:
+            with open(log_file, "r") as f:
+                # Go to end of file
+                f.seek(0, 2)
+
+                while True:
+                    line = f.readline()
+                    if line:
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                    else:
+                        # Check if daemon died
+                        pid = _check_daemon(target_path)
+                        if pid is None:
+                            Console.newline()
+                            Console.warning("Daemon has stopped")
+                            break
+                        time.sleep(0.1)
+        except KeyboardInterrupt:
+            Console.newline()
+            Console.info("Log follow stopped")
+        except OSError as e:
+            Console.error(f"Error reading log: {e}")
+    else:
+        # ── Show last N lines ────────────────────────────────────────────
+        try:
+            all_lines = log_file.read_text().splitlines()
+            if not all_lines:
+                Console.info("Log file is empty")
+                return
+
+            show_lines = all_lines[-min(lines, len(all_lines)):]
+
+            Console.info(f"{log_file} ({len(all_lines)} total lines)")
+            Console.newline()
+
+            for line in show_lines:
+                Console.print(f"  {Colors.DIM}{line}{Colors.RESET}")
+
+            Console.newline()
+            Console.info(f"Run 'ghost logs -f' to follow in real-time")
+
+        except OSError as e:
+            Console.error(f"Error reading log: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
