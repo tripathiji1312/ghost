@@ -161,11 +161,17 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler, FileSystemEvent
     from write_policy import WriteGuard
+    from job_queue import JobQueue
     from config import get_config
 
     config = get_config(project_root)
     output_dir = config.tests.output_dir
     guard = WriteGuard(project_root / output_dir)
+    queue = JobQueue(
+        debounce_seconds=config.watcher.debounce_seconds,
+        max_workers=1,
+    )
+    queue.start()
 
     class DaemonEventHandler(FileSystemEventHandler):
         """Watchdog event handler that logs all activity and triggers test gen."""
@@ -177,7 +183,6 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
             return path
 
         def _check_path(self, file_path: str) -> bool:
-            """Check if path should be watched (replicates main.CheckPath logic)."""
             normalized = file_path.replace("\\", "/")
             if "/tests/" in normalized or normalized.endswith("/tests"):
                 return False
@@ -192,11 +197,7 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 return False
             return True
 
-        def on_modified(self, event: FileSystemEvent) -> None:
-            file_path = self._get_file(event)
-            if not file_path or not self._check_path(file_path):
-                return
-
+        def _process_file(self, file_path: str) -> None:
             file_name = file_path.split("/")[-1]
             logger.info(f"File modified: {file_name}")
 
@@ -209,7 +210,6 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
 
             try:
                 import init as ghost_init_module
-
                 result = ghost_init_module.walk_and_modify_json(
                     str(project_root), file_path, file_name
                 )
@@ -231,6 +231,12 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 logger.info(f"Tests generated: test_{file_name}")
             except Exception as e:
                 logger.error(f"Test generation failed for {file_name}: {e}")
+
+        def on_modified(self, event: FileSystemEvent) -> None:
+            file_path = self._get_file(event)
+            if not file_path or not self._check_path(file_path):
+                return
+            queue.submit(file_path, self._process_file)
 
         def on_created(self, event: FileSystemEvent) -> None:
             file_path = self._get_file(event)

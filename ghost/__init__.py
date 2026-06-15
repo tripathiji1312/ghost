@@ -28,6 +28,7 @@ from .config import GhostConfig, get_config
 from .providers import get_provider, list_available_providers
 from .console import Console, GhostSpinner
 from .write_policy import WriteGuard, WritePolicyError
+from .job_queue import JobQueue
 
 __all__ = [
     "main",
@@ -39,5 +40,6 @@ __all__ = [
     "GhostSpinner",
     "WriteGuard",
     "WritePolicyError",
+    "JobQueue",
     "__version__",
 ]
