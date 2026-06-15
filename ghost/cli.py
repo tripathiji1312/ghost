@@ -793,12 +793,17 @@ def generate(file: str, output: Optional[str], force: bool):
     
     Console.generating(file_path.name)
     
+    from write_policy import WriteGuard
+    from config import get_config
+    config = get_config(project_root)
+    output_dir = config.tests.output_dir
+    guard = WriteGuard(project_root / output_dir)
+    
     # Determine output path
     if output:
         test_path = Path(output).resolve()
     else:
-        tests_dir = project_root / "tests"
-        tests_dir.mkdir(exist_ok=True)
+        tests_dir = project_root / output_dir
         test_path = tests_dir / f"test_{file_path.name}"
     
     # Check if test file exists
@@ -815,9 +820,7 @@ def generate(file: str, output: Optional[str], force: bool):
     with GhostSpinner("Generating tests with AI", style=SpinnerStyle.DOTS, color=Colors.CYAN) as spinner:
         try:
             from chat import TestGenerator
-            from config import get_config
             
-            config = get_config(project_root)
             generator = TestGenerator(config=config)
             
             test_code = generator.get_test_code(
@@ -826,10 +829,7 @@ def generate(file: str, output: Optional[str], force: bool):
                 filename=file_path.name
             )
             
-            # Write test file
-            with open(test_path, 'w') as f:
-                f.write(test_code)
-            
+            guard.write_text(test_path, test_code)
             spinner.stop(message=f"Tests written to {test_path.name}")
             
         except Exception as e:

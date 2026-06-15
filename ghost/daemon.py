@@ -245,16 +245,16 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 try:
                     from chat import TestGenerator
                     from config import get_config
+                    from write_policy import WriteGuard
 
                     config = get_config(project_root)
+                    output_dir = config.tests.output_dir
+                    guard = WriteGuard(project_root / output_dir)
                     generator = TestGenerator(config=config)
                     code = generator.get_test_code(content, str(project_root), file_name)
 
-                    # Write test file
-                    tests_dir = project_root / "tests"
-                    tests_dir.mkdir(exist_ok=True)
-                    test_path = tests_dir / f"test_{file_name}"
-                    test_path.write_text(code)
+                    test_path = project_root / output_dir / f"test_{file_name}"
+                    guard.write_text(test_path, code)
                     logger.info(f"Tests generated: test_{file_name}")
                 except Exception as e:
                     logger.error(f"Test generation failed for {file_name}: {e}")
