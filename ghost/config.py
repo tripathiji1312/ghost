@@ -9,9 +9,10 @@ Supports loading from:
 
 import os
 import tomllib
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,6 +21,7 @@ load_dotenv()
 @dataclass
 class AIConfig:
     """AI provider configuration."""
+
     provider: str = "ollama"
     model: str = "llama3.2"
     api_key: Optional[str] = None
@@ -32,18 +34,31 @@ class AIConfig:
 @dataclass
 class ScannerConfig:
     """File scanner configuration."""
-    ignore_dirs: List[str] = field(default_factory=lambda: [
-        ".venv", "venv", "node_modules", ".git", "__pycache__",
-        "dist", "build", ".ghost", "tests", ".tox", ".pytest_cache"
-    ])
-    ignore_files: List[str] = field(default_factory=lambda: [
-        "setup.py", "conftest.py", "__init__.py"
-    ])
+
+    ignore_dirs: List[str] = field(
+        default_factory=lambda: [
+            ".venv",
+            "venv",
+            "node_modules",
+            ".git",
+            "__pycache__",
+            "dist",
+            "build",
+            ".ghost",
+            "tests",
+            ".tox",
+            ".pytest_cache",
+        ]
+    )
+    ignore_files: List[str] = field(
+        default_factory=lambda: ["setup.py", "conftest.py", "__init__.py"]
+    )
 
 
 @dataclass
 class TestConfig:
     """Test generation configuration."""
+
     framework: str = "pytest"
     output_dir: str = "tests"
     auto_heal: bool = True
@@ -54,6 +69,7 @@ class TestConfig:
 @dataclass
 class WatcherConfig:
     """File watcher configuration."""
+
     debounce_seconds: int = 15
     patterns: List[str] = field(default_factory=lambda: ["*.py"])
 
@@ -61,13 +77,14 @@ class WatcherConfig:
 @dataclass
 class GhostConfig:
     """Complete Ghost configuration."""
+
     project_name: str = "my-project"
     language: str = "python"
     ai: AIConfig = field(default_factory=AIConfig)
     scanner: ScannerConfig = field(default_factory=ScannerConfig)
     tests: TestConfig = field(default_factory=TestConfig)
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GhostConfig":
         """Create config from dictionary (parsed TOML)."""
@@ -76,7 +93,7 @@ class GhostConfig:
         scanner_data = data.get("scanner", {})
         test_data = data.get("tests", {})
         watcher_data = data.get("watcher", {})
-        
+
         return cls(
             project_name=project.get("name", "my-project"),
             language=project.get("language", "python"),
@@ -110,40 +127,40 @@ class GhostConfig:
 def get_config(project_path: Optional[Path] = None) -> GhostConfig:
     """
     Load Ghost configuration from ghost.toml.
-    
+
     Args:
         project_path: Path to the project root. If None, searches from CWD.
-    
+
     Returns:
         GhostConfig instance with all settings.
     """
     if project_path is None:
         project_path = find_project_root()
-    
+
     if project_path is None:
         # Return defaults if no project found
         return GhostConfig()
-    
+
     project_path = Path(project_path)
-    
+
     # Load .env from project directory
     env_file = project_path / ".env"
     if env_file.exists():
         load_dotenv(env_file, override=True)
-    
+
     config_path = project_path / "ghost.toml"
-    
+
     if not config_path.exists():
         return GhostConfig()
-    
+
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
-    
+
     config = GhostConfig.from_dict(data)
-    
+
     # Override with environment variables
     config = _apply_env_overrides(config)
-    
+
     return config
 
 
@@ -151,20 +168,20 @@ def find_project_root(start_path: Optional[Path] = None) -> Optional[Path]:
     """Find the project root by looking for ghost.toml."""
     if start_path is None:
         start_path = Path.cwd()
-    
+
     current = start_path.resolve()
-    
+
     while current != current.parent:
         if (current / "ghost.toml").exists():
             return current
         current = current.parent
-    
+
     return None
 
 
 def _apply_env_overrides(config: GhostConfig) -> GhostConfig:
     """Apply environment variable overrides to config."""
-    
+
     # API key overrides based on provider
     env_keys = {
         "groq": "GROQ_API_KEY",
@@ -172,33 +189,33 @@ def _apply_env_overrides(config: GhostConfig) -> GhostConfig:
         "anthropic": "ANTHROPIC_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
     }
-    
+
     provider = config.ai.provider.lower()
     if provider in env_keys:
         env_key = env_keys[provider]
         api_key = os.environ.get(env_key)
         if api_key:
             config.ai.api_key = api_key
-    
+
     # Also check for generic API key
     if not config.ai.api_key:
         config.ai.api_key = os.environ.get("GHOST_API_KEY")
-    
+
     # Base URL override
     base_url = os.environ.get("GHOST_BASE_URL")
     if base_url:
         config.ai.base_url = base_url
-    
+
     # Ollama host override
     if provider == "ollama":
         ollama_host = os.environ.get("OLLAMA_HOST")
         if ollama_host:
             config.ai.base_url = ollama_host
-    
+
     return config
 
 
-def get_api_key(provider: str = None) -> Optional[str]:
+def get_api_key(provider: Optional[str] = None) -> Optional[str]:
     """Get API key for a specific provider from environment."""
     env_keys = {
         "groq": ["GROQ_API_KEY", "GROQ_API_KEY3"],  # Support legacy key name
@@ -206,23 +223,23 @@ def get_api_key(provider: str = None) -> Optional[str]:
         "anthropic": ["ANTHROPIC_API_KEY"],
         "openrouter": ["OPENROUTER_API_KEY"],
     }
-    
+
     if provider:
         provider = provider.lower()
         keys = env_keys.get(provider, [])
-        
+
         for key in keys:
             value = os.environ.get(key)
             if value:
                 return value
-    
+
     # Try all keys if no provider specified
     for keys_list in env_keys.values():
         for key in keys_list:
             value = os.environ.get(key)
             if value:
                 return value
-    
+
     return None
 
 

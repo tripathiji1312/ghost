@@ -8,20 +8,14 @@ Usage (called by CLI, not directly):
     python -m ghost.daemon /path/to/project
 """
 
-import os
-import sys
-import time
-import signal
 import logging
+import os
+import signal
+import sys
 import threading
-from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
-
-# Ensure ghost package is importable when launched as subprocess
-_GHOST_DIR = Path(__file__).parent.resolve()
-if str(_GHOST_DIR) not in sys.path:
-    sys.path.insert(0, str(_GHOST_DIR))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Global shutdown coordination
@@ -41,6 +35,7 @@ def _signal_handler(signum: int, frame) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def setup_daemon_logging(log_dir: Path) -> logging.Logger:
     """Configure rotating file logging for the daemon process.
@@ -83,6 +78,7 @@ def setup_daemon_logging(log_dir: Path) -> logging.Logger:
 # ──────────────────────────────────────────────────────────────────────────────
 # PID file management
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _write_pid(pid_file: Path) -> None:
     """Write the current process PID to the PID file atomically."""
@@ -133,6 +129,7 @@ def check_pid(pid_file: Path) -> Optional[int]:
 # Daemon runner (core logic)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _load_env(project_root: Path) -> None:
     """Load .env from the project root if it exists."""
     env_file = project_root / ".env"
@@ -158,10 +155,11 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
     Returns:
         The started Observer instance.
     """
+    from watchdog.events import FileSystemEvent, FileSystemEventHandler
     from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileSystemEvent
-    from job_queue import JobQueue
-    from config import get_config
+
+    from ghost.config import get_config
+    from ghost.job_queue import JobQueue
 
     config = get_config(project_root)
     queue = JobQueue(
@@ -206,7 +204,8 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 return
 
             try:
-                import init as ghost_init_module
+                from ghost import init as ghost_init_module
+
                 result = ghost_init_module.walk_and_modify_json(
                     str(project_root), file_path, file_name
                 )
@@ -218,16 +217,62 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 return
 
             try:
-                from chat import TestGenerator
+                from ghost.chat import TestGenerator
+                from ghost.runner import classify_error, run_test
 
                 generator = TestGenerator(config=config)
                 code = generator.get_test_code(content, str(project_root), file_name)
 
                 test_path = project_root / config.tests.output_dir / f"test_{file_name}"
+                test_path.parent.mkdir(parents=True, exist_ok=True)
                 test_path.write_text(code)
                 logger.info(f"Tests generated: test_{file_name}")
+
+                max_attempts = config.tests.max_heal_attempts if config.tests.auto_heal else 0
+                for attempt in range(max_attempts):
+                    return_code, stdout, stderr = run_test(str(test_path), str(project_root))
+                    error_type = classify_error(stderr, stdout)
+
+                    if return_code == 0:
+                        logger.info(f"Tests passed: test_{file_name}")
+                        break
+
+                    if error_type == "LOGIC":
+                        if config.tests.use_judge:
+                            judge = TestGenerator(config=config)
+                            result = judge.consult_the_judge(
+                                content,
+                                str(project_root),
+                                file_name,
+                                str(test_path),
+                                {"return_code": return_code, "stderr": stderr, "stdout": stdout},
+                            )
+                            if result == "BUG_IN_CODE":
+                                logger.warning(
+                                    f"Bug detected in source code, test left unchanged: test_{file_name}"
+                                )
+                                break
+                        else:
+                            logger.warning(f"Assertion failed in test_{file_name}, judge disabled")
+                            break
+
+                    logger.info(
+                        f"Healing attempt {attempt + 1}/{max_attempts} for test_{file_name}"
+                    )
+                    code = generator.get_test_code(
+                        content,
+                        str(project_root),
+                        file_name,
+                        testing=True,
+                        test_file_path=str(test_path),
+                        errors={"return_code": return_code, "stderr": stderr, "stdout": stdout},
+                    )
+                    test_path.write_text(code)
+                else:
+                    logger.warning(f"Max healing attempts reached for test_{file_name}")
+
             except Exception as e:
-                logger.error(f"Test generation failed for {file_name}: {e}")
+                logger.error(f"Test generation/healing failed for {file_name}: {e}")
 
         def on_modified(self, event: FileSystemEvent) -> None:
             file_path = self._get_file(event)
@@ -246,7 +291,7 @@ def _build_watcher(project_root: Path, logger: logging.Logger):
                 file_name = file_path.split("/")[-1]
                 logger.info(f"File deleted: {file_name}")
                 try:
-                    import init as ghost_init_module
+                    from ghost import init as ghost_init_module
 
                     ghost_init_module.walk_and_delete_json(str(project_root), file_name)
                 except Exception as e:

@@ -1,16 +1,17 @@
+import logging
 import os
 import time
-import logging
-from time import sleep
 from pathlib import Path
+from typing import Optional
+
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-from chat import TestGenerator
-import init as ghost_init_module
-import argparse
-from console import Console, GhostSpinner, SpinnerStyle, Colors, Icons, countdown
-from config import get_config, GhostConfig
-from runner import *
+
+from ghost import init as ghost_init_module
+from ghost.chat import TestGenerator
+from ghost.config import get_config
+from ghost.console import Colors, Console, GhostSpinner, SpinnerStyle, countdown
+from ghost.runner import classify_error, run_test
 
 
 # Utility function to extract file name from path
@@ -18,6 +19,7 @@ def getFileNameFromPath(path: str) -> str:
     # Extracts the file name from a given path
     parts = path.replace("\\", "/").split("/")
     return parts[-1]
+
 
 def logging_setup():
     class CustomFormatter(logging.Formatter):
@@ -33,12 +35,12 @@ def logging_setup():
             logging.INFO: grey + format_str + reset,
             logging.WARNING: yellow + format_str + reset,
             logging.ERROR: red + format_str + reset,
-            logging.CRITICAL: bold_red + format_str + reset
+            logging.CRITICAL: bold_red + format_str + reset,
         }
 
         def format(self, record):
             log_fmt = self.FORMATS.get(record.levelno)
-            formatter = logging.Formatter(log_fmt, datefmt='%Y-%m-%d %H:%M:%S')
+            formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
             return formatter.format(record)
 
     # Set up logger
@@ -51,6 +53,7 @@ def logging_setup():
     ch.setFormatter(CustomFormatter())
     logger.addHandler(ch)
 
+
 # Function to check if the path should be logged
 def CheckPath(file: str, full_path: str = "") -> bool:
     # Placeholder for path validation logic
@@ -58,7 +61,7 @@ def CheckPath(file: str, full_path: str = "") -> bool:
     # Check if path is in tests directory (check full path, not just filename)
     if full_path:
         normalized_path = full_path.replace("\\", "/")
-        if '/tests/' in normalized_path or normalized_path.endswith('/tests'):
+        if "/tests/" in normalized_path or normalized_path.endswith("/tests"):
             logging.debug("Ignoring file in tests directory: %s", file)
             return False
     if full_path.endswith(".py~"):
@@ -67,26 +70,23 @@ def CheckPath(file: str, full_path: str = "") -> bool:
     if "/tests/" in full_path:
         logging.debug("Ignoring file in tests directory: %s", file)
         return False
-    if 'test' in file.lower() or 'tmp' in file.lower():
+    if "test" in file.lower() or "tmp" in file.lower():
         logging.debug("Ignoring test or tmp file: %s", file)
         return False
-    if file.startswith('.git') or file.endswith('.log'):
+    if file.startswith(".git") or file.endswith(".log"):
         logging.debug("Ignoring file: %s", file)
         return False
-    if '.py' not in file:
+    if ".py" not in file:
         logging.debug("Ignoring non-Python file: %s", file)
         return False
     return True
 
-# Reading File
-count = 0
+
 def check_test(file_path: str, source_path: str, file: str) -> bool:
-    global count
-    print(f"File: {file}, file_path: {file_path}, source_path: {source_path}")
+    attempt_count = 0
     spinner1 = GhostSpinner("Running tests", style=SpinnerStyle.DOTS, color=Colors.CYAN)
-    while count < 3:
-        count += 1
-        print(f"Count: {count}")
+    while attempt_count < 3:
+        attempt_count += 1
         spinner1.start()
         folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
         folder_path = f"{folder_path}/tests"
@@ -99,11 +99,13 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
         spinner1.stop()
         try:
 
-            if error_type == "SYNTAX" and error_type != "UNKNOWN":
-                Console.warning(f"Syntax errors detected in {test_file_path}")
+            if error_type in ("SYNTAX", "RUNTIME", "UNKNOWN"):
+                Console.warning(f"Errors detected in {test_file_path}")
                 countdown(5, "Preparing to heal")
 
-                spinner2 = GhostSpinner("Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
+                spinner2 = GhostSpinner(
+                    "Healing test file", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA
+                )
                 spinner2.start()
                 config = get_config(Path(source_path) if source_path else None)
                 generator = TestGenerator(config=config)
@@ -112,7 +114,9 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
                 spinner2.stop(message="Test healed successfully")
             elif error_type == "LOGIC":
                 Console.judging(file)
-                spinner3 = GhostSpinner("Consulting the judge", style=SpinnerStyle.DOTS, color=Colors.YELLOW)
+                spinner3 = GhostSpinner(
+                    "Consulting the judge", style=SpinnerStyle.DOTS, color=Colors.YELLOW
+                )
                 spinner3.start()
                 countdown(5, "Analyzing code")
 
@@ -124,30 +128,32 @@ def check_test(file_path: str, source_path: str, file: str) -> bool:
                 Console.verdict(result == "BUG_IN_CODE")
 
                 if result == "BUG_IN_CODE":
-                    countdown(5, "Preparing fix")
-                    spinner4 = GhostSpinner("Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA)
-                    spinner4.start()
-                    generator = TestGenerator(config=config)
-                    code = generator.get_test_code(cont, curr_path, file, True, test_file_path, errors)
-                    WriteTest(file_path, code, source_path)
-                    spinner4.stop(message="Tests fixed successfully")
-                elif result == "FIX_TEST":
                     Console.newline()
                     Console.error("BUG DETECTED IN SOURCE CODE!", prefix="CRITICAL")
-                    Console.info("The test found a discrepancy, but the AI believes the code is at fault.")
+                    Console.info("The test failed because the source code has a defect.")
                     Console.warning("Ghost will NOT update the test to match buggy code.")
                     Console.newline()
                     break
+                elif result == "FIX_TEST":
+                    countdown(5, "Preparing fix")
+                    spinner4 = GhostSpinner(
+                        "Fixing tests", style=SpinnerStyle.DOTS2, color=Colors.MAGENTA
+                    )
+                    spinner4.start()
+                    generator = TestGenerator(config=config)
+                    code = generator.get_test_code(
+                        cont, curr_path, file, True, test_file_path, errors
+                    )
+                    WriteTest(file_path, code, source_path)
+                    spinner4.stop(message="Tests fixed successfully")
 
             else:
-                Console.error(f"No known bug found!")
+                Console.error("No known bug found!")
                 break
 
         except Exception as e:
-            Console.error(f"Error consulting the judge: {e}")
+            Console.error(f"Error during test check: {e}")
             return False
-
-
 
     return True
 
@@ -175,7 +181,8 @@ def make_tests(file_path, content, source_path="", file="") -> None:
         return
     check_test(file_path, source_path, file)
 
-def ReadFile(file_path: str) -> None:
+
+def ReadFile(file_path: str) -> Optional[str]:
     if not os.path.isfile(file_path):
         return None
 
@@ -185,24 +192,29 @@ def ReadFile(file_path: str) -> None:
     except (FileNotFoundError, PermissionError, OSError):
         return None
 
+
 # Write Test File
-def WriteTest(file_path: str, test_code: str, source_path: str) -> str | None:
+def WriteTest(file_path: str, test_code: str, source_path: str) -> None:
     folder_path = "/".join(str(source_path).replace("\\", "/").split("/")[:])
     folder_path = f"{folder_path}/tests"
-    if os.path.exists(folder_path) == False:
+    if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
     test_file_path = f"{folder_path}/test_{getFileNameFromPath(file_path)}"
-    with open(test_file_path, 'w') as test_file:
+    with open(test_file_path, "w") as test_file:
         test_file.write(test_code)
     Console.success(f"Test file written: {test_file_path}")
+
 
 # Watchdog Event Handler
 def start_watching(path_to_watch):
     from pathlib import Path
+
     from dotenv import load_dotenv
-    from job_queue import JobQueue
-    from config import get_config
+
+    from ghost.config import get_config
+    from ghost.job_queue import JobQueue
+
     project_path = Path(path_to_watch).resolve()
     env_file = project_path / ".env"
     if env_file.exists():
@@ -268,56 +280,3 @@ def start_watching(path_to_watch):
         queue.stop()
         observer.stop()
         observer.join()
-
-def main():
-    logging_setup()
-    
-    # Show beautiful banner
-    Console.banner()
-
-    parser = argparse.ArgumentParser(
-        description="GhostTest: AI QA Agent"
-    )
-
-    # Optional init flag (no subcommands)
-    parser.add_argument(
-        "--init",
-        action="store_true",
-        help="Initialize Ghost in the target directory"
-    )
-
-    # Optional path (default: current working directory)
-    parser.add_argument(
-        "path",
-        nargs="?",
-        type=Path,
-        default=Path.cwd(),
-        help="Target path (default: current directory)"
-    )
-
-    args = parser.parse_args()
-
-    target_path = args.path.resolve()
-
-    if args.init:
-        try:
-            Console.info(f"Initializing Ghost in {target_path}")
-            ghost_init_module.ghost_init(target_path)
-            Console.success("Ghost initialized successfully!")
-            return
-        except Exception as e:
-            Console.error(f"Error initializing Ghost: {e}")
-            return
-
-    ghost_file = target_path / "ghost.toml"
-
-    if not ghost_file.exists():
-        Console.warning("ghost.toml not found. Initializing with defaults...")
-        ghost_init_module.ghost_init(target_path)
-
-    Console.section("Starting File Watcher")
-    start_watching(target_path)
-
-
-if __name__ == "__main__":
-    main()

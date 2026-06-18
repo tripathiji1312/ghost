@@ -20,14 +20,14 @@ Usage:
 For more information, visit: https://github.com/ghosttest/ghost
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.2.3"
 __author__ = "Ghost Team"
 
 from .cli import main
 from .config import GhostConfig, get_config
-from .providers import get_provider, list_available_providers
 from .console import Console, GhostSpinner
 from .job_queue import JobQueue
+from .providers import get_provider, list_available_providers
 
 __all__ = [
     "main",

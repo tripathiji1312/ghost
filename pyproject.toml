@@ -1,6 +1,6 @@
 [project]
 name = "ghosttest"
-version = "0.2.2.2"
+version = "0.2.2.3"
 description = "An autonomous local-first AI agent that generates, executes, and self-heals Python unit tests in real-time."
 readme = "PYPI_README.md"
 license = {text = "MIT"}
@@ -87,3 +87,24 @@ line_length = 100
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_incomplete_stub = false
+
+[[tool.mypy.overrides]]
+module = ["groq", "openai", "anthropic", "watchdog.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = ["ignore::DeprecationWarning"]

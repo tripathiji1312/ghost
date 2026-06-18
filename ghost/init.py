@@ -1,10 +1,11 @@
-import os
-import time
-import logging
 import ast
 import json
+import logging
+import os
 import tomllib
-from console import Console, GhostSpinner, SpinnerStyle, Colors 
+
+from ghost.console import Colors, Console, GhostSpinner, SpinnerStyle
+
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -27,11 +28,13 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.classes[node.name] = methods
         self.generic_visit(node)
 
+
 def get_toml(path):
     path = f"{path}/ghost.toml"
     with open(path, "rb") as f:
         config = tomllib.load(f)
     return config
+
 
 # ANALYSIS
 def add_parent_links(tree):
@@ -39,6 +42,7 @@ def add_parent_links(tree):
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
             child.parent = node
+
 
 # ANALYSIS
 def analyze_file(path):
@@ -55,6 +59,7 @@ def analyze_file(path):
     analyzer.visit(tree)
 
     return analyzer.functions, analyzer.classes
+
 
 # GENERATION
 def walk_and_generate_json(base_dir):
@@ -82,7 +87,9 @@ def walk_and_generate_json(base_dir):
                     method_list = ", ".join(methods) if methods else "None"
                     class_parts.append(f"{cls} [Methods: {method_list}]")
 
-                class_part = "Classes: " + "; ".join(class_parts) if class_parts else "Classes: None"
+                class_part = (
+                    "Classes: " + "; ".join(class_parts) if class_parts else "Classes: None"
+                )
 
                 result[file] = f"{func_part}; {class_part}"
 
@@ -93,9 +100,9 @@ def walk_and_generate_json(base_dir):
 
     return result
 
+
 # DELETION
-import os
-import json
+
 
 def walk_and_delete_json(base_dir, filename):
     output_json = os.path.join(base_dir, ".ghost", "context.json")
@@ -130,18 +137,16 @@ def walk_and_modify_json(base_dir, file_path, file):
     conf = get_toml(base_dir)
     result = {}
     ignore_files = conf.get("scanner", {}).get("ignore_files", [])
-    # file = os.path.basename(base_dir)
-    root = os.path.dirname(base_dir)
     if file not in ignore_files:
         if file.endswith(".py"):
             # file_path = os.path.join(root, file)
             analysis_result = analyze_file(file_path)
-            
+
             # Skip if file has syntax errors
             if analysis_result is None:
                 logging.warning("Skipping file with syntax errors: %s", file)
                 return None
-            
+
             functions, classes = analysis_result
 
             if functions or classes:
@@ -154,7 +159,9 @@ def walk_and_modify_json(base_dir, file_path, file):
                     method_list = ", ".join(methods) if methods else "None"
                     class_parts.append(f"{cls} [Methods: {method_list}]")
 
-                class_part = "Classes: " + "; ".join(class_parts) if class_parts else "Classes: None"
+                class_part = (
+                    "Classes: " + "; ".join(class_parts) if class_parts else "Classes: None"
+                )
 
                 result[file] = f"{func_part}; {class_part}"
     output_json = f"{base_dir}/.ghost/context.json"
@@ -167,13 +174,14 @@ def walk_and_modify_json(base_dir, file_path, file):
 
     return result
 
+
 # INITIALIZATION
-def ghost_init(path = os.getcwd()):
+def ghost_init(path=os.getcwd()):
     spinner = GhostSpinner("Initializing Ghost", style=SpinnerStyle.DOTS, color=Colors.MAGENTA)
     spinner.start()
     try:
         pathh = f"{path}/ghost.toml"
-        text = '''[project]
+        text = """[project]
 name = "my-app"
 language = "python"
 
@@ -196,24 +204,25 @@ max_heal_attempts = 3
 
 [watcher]
 debounce_seconds = 15
-'''
+"""
         with open(pathh, "w") as f:
             f.write(text)
-        Console.success(f"Created ghost.toml")
-        
+        Console.success("Created ghost.toml")
+
         ghost_dir = f"{path}/.ghost"
         if not os.path.exists(ghost_dir):
             os.mkdir(ghost_dir)
-            Console.success(f"Created .ghost/ directory")
-        
+            Console.success("Created .ghost/ directory")
+
         walk_and_generate_json(path)
-        Console.success(f"Generated context.json")
+        Console.success("Generated context.json")
         spinner.stop(message="Ghost initialized successfully")
     except Exception as e:
         spinner.fail(f"Initialization failed: {e}")
         raise
-    
+
     Console.info("Run 'ghost watch' to start monitoring")
+
 
 def main():
     class CustomFormatter(logging.Formatter):
@@ -229,12 +238,12 @@ def main():
             logging.INFO: grey + format_str + reset,
             logging.WARNING: yellow + format_str + reset,
             logging.ERROR: red + format_str + reset,
-            logging.CRITICAL: bold_red + format_str + reset
+            logging.CRITICAL: bold_red + format_str + reset,
         }
 
         def format(self, record):
             log_fmt = self.FORMATS.get(record.levelno)
-            formatter = logging.Formatter(log_fmt, datefmt='%Y-%m-%d %H:%M:%S')
+            formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
             return formatter.format(record)
 
     # Set up logger
@@ -247,8 +256,9 @@ def main():
     ch.setFormatter(CustomFormatter())
     logger.addHandler(ch)
 
- # INITIALIZATION
+    # INITIALIZATION
     ghost_init()
+
 
 if __name__ == "__main__":
     main()

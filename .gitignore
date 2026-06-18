@@ -10,3 +10,9 @@ wheels/
 .venv
 .idea
 .env
+
+# Runtime
+.ghost/
+
+# Agent instructions
+AGENTS.md

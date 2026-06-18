@@ -11,11 +11,11 @@ The worker processes jobs in FIFO order on a dedicated thread.
 
 import threading
 import time
-from typing import Callable, Optional, Any
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from collections import OrderedDict
-from queue import Queue, Empty
+from queue import Empty, Queue
+from typing import Any, Callable, Optional
 
 
 class JobState(Enum):

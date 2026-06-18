@@ -4,22 +4,23 @@ Ghost Console - Beautiful CLI output with animations and styling.
 A professional console output system inspired by tools like Vercel, Cargo, and npm.
 """
 
-import sys
-import time
-import threading
 import itertools
+import shutil
+import sys
+import threading
+import time
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-import shutil
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ANSI COLOR CODES & STYLING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class Colors:
     """ANSI color codes for terminal styling."""
+
     # Reset
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -27,7 +28,7 @@ class Colors:
     ITALIC = "\033[3m"
     UNDERLINE = "\033[4m"
     BLINK = "\033[5m"
-    
+
     # Regular colors
     BLACK = "\033[30m"
     RED = "\033[31m"
@@ -37,7 +38,7 @@ class Colors:
     MAGENTA = "\033[35m"
     CYAN = "\033[36m"
     WHITE = "\033[37m"
-    
+
     # Bright colors
     BRIGHT_BLACK = "\033[90m"
     BRIGHT_RED = "\033[91m"
@@ -47,7 +48,7 @@ class Colors:
     BRIGHT_MAGENTA = "\033[95m"
     BRIGHT_CYAN = "\033[96m"
     BRIGHT_WHITE = "\033[97m"
-    
+
     # Background colors
     BG_BLACK = "\033[40m"
     BG_RED = "\033[41m"
@@ -61,13 +62,14 @@ class Colors:
 
 class Icons:
     """Beautiful Unicode icons for different states."""
+
     # Status icons
     SUCCESS = "✔"
     ERROR = "✖"
     WARNING = "⚠"
     INFO = "ℹ"
     DEBUG = "⚙"
-    
+
     # Action icons
     ARROW = "→"
     ROCKET = "🚀"
@@ -109,8 +111,10 @@ class Icons:
 # SPINNER ANIMATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class SpinnerStyle(Enum):
     """Different spinner animation styles."""
+
     DOTS = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
     DOTS2 = ("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷")
     DOTS3 = ("⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈")
@@ -124,20 +128,32 @@ class SpinnerStyle(Enum):
     CLOCK = ("🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛")
     GHOST = ("👻", "  ", "👻", "  ", "👻")
     GROW = ("▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂")
-    AESTHETIC = ("░░░░░", "█░░░░", "██░░░", "███░░", "████░", "█████", "████░", "███░░", "██░░░", "█░░░░")
+    AESTHETIC = (
+        "░░░░░",
+        "█░░░░",
+        "██░░░",
+        "███░░",
+        "████░",
+        "█████",
+        "████░",
+        "███░░",
+        "██░░░",
+        "█░░░░",
+    )
 
 
 class GhostSpinner:
     """
     Beautiful animated spinner with multiple styles and colors.
     """
+
     def __init__(
-        self, 
-        message: str = "Processing", 
+        self,
+        message: str = "Processing",
         style: SpinnerStyle = SpinnerStyle.DOTS,
         color: str = Colors.CYAN,
         success_message: Optional[str] = None,
-        show_elapsed: bool = True
+        show_elapsed: bool = True,
     ):
         self.message = message
         self.frames = itertools.cycle(style.value)
@@ -165,7 +181,11 @@ class GhostSpinner:
         while self.running:
             with self._lock:
                 frame = next(self.frames)
-                elapsed = f" {Colors.DIM}({self._get_elapsed()}){Colors.RESET}" if self.show_elapsed else ""
+                elapsed = (
+                    f" {Colors.DIM}({self._get_elapsed()}){Colors.RESET}"
+                    if self.show_elapsed
+                    else ""
+                )
                 line = f"\r{self.color}{frame}{Colors.RESET} {self.message}{elapsed}"
                 sys.stdout.write(f"\033[K{line}")  # Clear line then write
                 sys.stdout.flush()
@@ -184,15 +204,15 @@ class GhostSpinner:
         self.running = False
         if self.thread:
             self.thread.join(timeout=0.5)
-        
+
         elapsed = f" {Colors.DIM}({self._get_elapsed()}){Colors.RESET}" if self.show_elapsed else ""
         final_message = message or self.success_message or self.message
-        
+
         if success:
             icon = f"{Colors.BRIGHT_GREEN}{Icons.SUCCESS}{Colors.RESET}"
         else:
             icon = f"{Colors.BRIGHT_RED}{Icons.ERROR}{Colors.RESET}"
-        
+
         sys.stdout.write(f"\r\033[K{icon} {final_message}{elapsed}\n")
         sys.stdout.flush()
 
@@ -217,17 +237,18 @@ class GhostSpinner:
 # PROGRESS BAR
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ProgressBar:
     """Beautiful progress bar with percentage and ETA."""
-    
+
     def __init__(
-        self, 
-        total: int, 
+        self,
+        total: int,
         description: str = "",
         width: int = 40,
         fill_char: str = "█",
         empty_char: str = "░",
-        color: str = Colors.CYAN
+        color: str = Colors.CYAN,
     ):
         self.total = total
         self.current = 0
@@ -253,10 +274,10 @@ class ProgressBar:
         percent = self.current / self.total if self.total > 0 else 0
         filled = int(self.width * percent)
         empty = self.width - filled
-        
+
         bar = f"{self.color}{self.fill_char * filled}{Colors.DIM}{self.empty_char * empty}{Colors.RESET}"
         percentage = f"{percent * 100:>5.1f}%"
-        
+
         # Calculate ETA
         elapsed = time.time() - self.start_time
         if self.current > 0 and percent < 1:
@@ -266,12 +287,12 @@ class ProgressBar:
             eta_str = f"Done in {elapsed:.1f}s"
         else:
             eta_str = "ETA: --"
-        
+
         desc = f"{self.description} " if self.description else ""
         line = f"\r{desc}│{bar}│ {percentage} {Colors.DIM}{eta_str}{Colors.RESET}"
         sys.stdout.write(f"\033[K{line}")
         sys.stdout.flush()
-        
+
         if percent >= 1:
             sys.stdout.write("\n")
 
@@ -284,13 +305,14 @@ class ProgressBar:
 # CONSOLE OUTPUT
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class Console:
     """
     Professional console output with beautiful formatting.
     """
-    
+
     _terminal_width: Optional[int] = None
-    
+
     @classmethod
     def get_width(cls) -> int:
         """Get terminal width."""
@@ -306,7 +328,7 @@ class Console:
     # ─────────────────────────────────────────────────────────────────────────
     # Basic Output Methods
     # ─────────────────────────────────────────────────────────────────────────
-    
+
     @classmethod
     def print(cls, message: str, end: str = "\n"):
         """Print a simple message."""
@@ -420,7 +442,7 @@ class Console:
         file = f"{Colors.BRIGHT_WHITE}{filename}{Colors.RESET}"
         print(f"{icon} Consulting judge for: {file}")
 
-    @classmethod  
+    @classmethod
     def verdict(cls, is_bug_in_code: bool):
         """Print judge verdict."""
         if is_bug_in_code:
@@ -434,7 +456,9 @@ class Console:
     def rate_limited(cls, wait_seconds: float, attempt: int = 1, max_attempts: int = 5):
         """Print rate limit message with countdown style."""
         icon = f"{Colors.BRIGHT_YELLOW}{Icons.HOURGLASS}{Colors.RESET}"
-        print(f"{icon} {Colors.YELLOW}Rate limited{Colors.RESET} - waiting {Colors.BRIGHT_WHITE}{wait_seconds:.1f}s{Colors.RESET} {Colors.DIM}(attempt {attempt}/{max_attempts}){Colors.RESET}")
+        print(
+            f"{icon} {Colors.YELLOW}Rate limited{Colors.RESET} - waiting {Colors.BRIGHT_WHITE}{wait_seconds:.1f}s{Colors.RESET} {Colors.DIM}(attempt {attempt}/{max_attempts}){Colors.RESET}"
+        )
 
     @classmethod
     def waiting(cls, seconds: float, reason: str = ""):
@@ -451,7 +475,7 @@ class Console:
     def header(cls, title: str, subtitle: str = ""):
         """Print a beautiful header."""
         width = cls.get_width()
-        
+
         print()
         print(f"{Colors.BRIGHT_MAGENTA}{'━' * width}{Colors.RESET}")
         print(f"{Colors.BRIGHT_WHITE}{Colors.BOLD}  {Icons.GHOST} {title}{Colors.RESET}")
@@ -494,7 +518,9 @@ class Console:
     def mini_banner(cls):
         """Print a minimal Ghost banner."""
         print()
-        print(f"  {Colors.BRIGHT_MAGENTA}{Icons.GHOST} {Colors.BOLD}GHOST{Colors.RESET} {Colors.DIM}│ AI Test Generator{Colors.RESET}")
+        print(
+            f"  {Colors.BRIGHT_MAGENTA}{Icons.GHOST} {Colors.BOLD}GHOST{Colors.RESET} {Colors.DIM}│ AI Test Generator{Colors.RESET}"
+        )
         print()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -507,25 +533,44 @@ class Console:
         print()
         for key, value in kwargs.items():
             label = key.replace("_", " ").title()
-            print(f"  {Colors.DIM}{Icons.DOT}{Colors.RESET} {label}: {Colors.BRIGHT_WHITE}{value}{Colors.RESET}")
+            print(
+                f"  {Colors.DIM}{Icons.DOT}{Colors.RESET} {label}: {Colors.BRIGHT_WHITE}{value}{Colors.RESET}"
+            )
         print()
 
     @classmethod
-    def summary(cls, tests_generated: int = 0, tests_passed: int = 0, tests_failed: int = 0, healed: int = 0, duration: float = 0):
+    def summary(
+        cls,
+        tests_generated: int = 0,
+        tests_passed: int = 0,
+        tests_failed: int = 0,
+        healed: int = 0,
+        duration: float = 0,
+    ):
         """Print a test run summary."""
         cls.divider("═")
         print(f"  {Colors.BOLD}Summary{Colors.RESET}")
         cls.divider()
-        
+
         # Stats
-        print(f"  {Colors.BRIGHT_GREEN}{Icons.SUCCESS}{Colors.RESET} Generated: {Colors.BRIGHT_WHITE}{tests_generated}{Colors.RESET}")
-        print(f"  {Colors.BRIGHT_GREEN}{Icons.CHECK}{Colors.RESET} Passed:    {Colors.BRIGHT_WHITE}{tests_passed}{Colors.RESET}")
+        print(
+            f"  {Colors.BRIGHT_GREEN}{Icons.SUCCESS}{Colors.RESET} Generated: {Colors.BRIGHT_WHITE}{tests_generated}{Colors.RESET}"
+        )
+        print(
+            f"  {Colors.BRIGHT_GREEN}{Icons.CHECK}{Colors.RESET} Passed:    {Colors.BRIGHT_WHITE}{tests_passed}{Colors.RESET}"
+        )
         if tests_failed > 0:
-            print(f"  {Colors.BRIGHT_RED}{Icons.CROSS}{Colors.RESET} Failed:    {Colors.BRIGHT_WHITE}{tests_failed}{Colors.RESET}")
+            print(
+                f"  {Colors.BRIGHT_RED}{Icons.CROSS}{Colors.RESET} Failed:    {Colors.BRIGHT_WHITE}{tests_failed}{Colors.RESET}"
+            )
         if healed > 0:
-            print(f"  {Colors.BRIGHT_MAGENTA}{Icons.WRENCH}{Colors.RESET} Healed:    {Colors.BRIGHT_WHITE}{healed}{Colors.RESET}")
-        print(f"  {Colors.DIM}{Icons.CLOCK}{Colors.RESET} Duration:  {Colors.BRIGHT_WHITE}{duration:.2f}s{Colors.RESET}")
-        
+            print(
+                f"  {Colors.BRIGHT_MAGENTA}{Icons.WRENCH}{Colors.RESET} Healed:    {Colors.BRIGHT_WHITE}{healed}{Colors.RESET}"
+            )
+        print(
+            f"  {Colors.DIM}{Icons.CLOCK}{Colors.RESET} Duration:  {Colors.BRIGHT_WHITE}{duration:.2f}s{Colors.RESET}"
+        )
+
         cls.divider("═")
         print()
 
@@ -534,6 +579,7 @@ class Console:
 # COUNTDOWN ANIMATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def countdown(seconds: float, message: str = "Waiting"):
     """Display an animated countdown."""
     start = time.time()
@@ -541,24 +587,27 @@ def countdown(seconds: float, message: str = "Waiting"):
         remaining = seconds - (time.time() - start)
         if remaining <= 0:
             break
-        
+
         bar_width = 20
         progress = 1 - (remaining / seconds)
         filled = int(bar_width * progress)
         empty = bar_width - filled
         bar = f"{Colors.CYAN}{'█' * filled}{Colors.DIM}{'░' * empty}{Colors.RESET}"
-        
-        sys.stdout.write(f"\r{Colors.BRIGHT_BLUE}{Icons.HOURGLASS}{Colors.RESET} {message} │{bar}│ {Colors.BRIGHT_WHITE}{remaining:.1f}s{Colors.RESET} ")
+
+        sys.stdout.write(
+            f"\r{Colors.BRIGHT_BLUE}{Icons.HOURGLASS}{Colors.RESET} {message} │{bar}│ {Colors.BRIGHT_WHITE}{remaining:.1f}s{Colors.RESET} "
+        )
         sys.stdout.flush()
         time.sleep(0.1)
-    
-    sys.stdout.write(f"\r\033[K")
+
+    sys.stdout.write("\r\033[K")
     sys.stdout.flush()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TYPING ANIMATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def type_text(text: str, delay: float = 0.03, color: str = ""):
     """Print text with typewriter effect."""
@@ -582,47 +631,41 @@ spinner = GhostSpinner
 def demo():
     """Demonstrate all console features."""
     Console.banner()
-    
+
     Console.header("Ghost Demo", "Showcasing beautiful console output")
-    
+
     Console.section("Status Messages")
     Console.success("Operation completed successfully")
     Console.error("Something went wrong")
     Console.warning("Proceed with caution")
     Console.info("Here's some information")
     Console.debug("Debug details here")
-    
+
     Console.section("Ghost Actions")
     Console.ghost("Starting Ghost engine...")
     Console.file_changed("example.py", "modified")
     Console.generating("example.py")
-    
+
     with GhostSpinner("Processing files", style=SpinnerStyle.DOTS, color=Colors.CYAN) as s:
         time.sleep(2)
         s.update("Almost done...")
         time.sleep(1)
-    
+
     Console.test_passed("test_example.py", duration=1.234)
     Console.healing("test_example.py", attempt=1)
     Console.judging("example.py")
     Console.verdict(is_bug_in_code=False)
-    
+
     Console.section("Progress Bar")
     bar = ProgressBar(100, "Generating")
     for i in range(100):
         bar.update(1)
         time.sleep(0.02)
-    
+
     Console.section("Countdown")
     countdown(3, "Rate limit cooldown")
-    
-    Console.summary(
-        tests_generated=5,
-        tests_passed=4,
-        tests_failed=1,
-        healed=1,
-        duration=12.34
-    )
+
+    Console.summary(tests_generated=5, tests_passed=4, tests_failed=1, healed=1, duration=12.34)
 
 
 if __name__ == "__main__":
