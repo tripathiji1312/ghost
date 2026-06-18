@@ -30,7 +30,7 @@ from ghost.console import Colors, Console, GhostSpinner, Icons, SpinnerStyle
 # CLI VERSION & CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "0.2.2.3"
+__version__ = "0.2.2.4"
 GHOST_CONFIG_FILE = "ghost.toml"
 GHOST_DIR = ".ghost"
 

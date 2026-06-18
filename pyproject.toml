@@ -1,6 +1,6 @@
 [project]
 name = "ghosttest"
-version = "0.2.2.3"
+version = "0.2.2.4"
 description = "An autonomous local-first AI agent that generates, executes, and self-heals Python unit tests in real-time."
 readme = "PYPI_README.md"
 license = {text = "MIT"}

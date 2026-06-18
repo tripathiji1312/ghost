@@ -20,7 +20,7 @@ Usage:
 For more information, visit: https://github.com/ghosttest/ghost
 """
 
-__version__ = "0.2.2.3"
+__version__ = "0.2.2.4"
 __author__ = "Ghost Team"
 
 from .cli import main
